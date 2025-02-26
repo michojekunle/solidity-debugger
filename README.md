@@ -1,6 +1,4 @@
-# solidity-debugger README
-
-This is the README for your extension "solidity-debugger". After writing up a brief description, we recommend including the following sections.
+# solidity-debugger
 
 ## Features
 
