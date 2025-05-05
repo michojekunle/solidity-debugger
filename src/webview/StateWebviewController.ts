@@ -1,6 +1,6 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
 
 /**
  * Interface representing state change data
@@ -29,13 +29,16 @@ export class StateWebviewController {
   /**
    * Get the static HTML content for the webview
    */
-  private static getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+  private static getWebviewContent(
+    webview: vscode.Webview,
+    extensionUri: vscode.Uri
+  ): string {
     // Local path to the webview bundle
-    const webviewPath = path.join(extensionUri.fsPath, 'webview-ui', 'dist');
-    
+    const webviewPath = path.join(extensionUri.fsPath, "webview-ui", "out");
+
     // Check if we're running in development mode
-    const devMode = process.env.NODE_ENV === 'development';
-    
+    const devMode = process.env.NODE_ENV === "development";
+
     // In dev mode, use the local server
     if (devMode) {
       return `<!DOCTYPE html>
@@ -61,7 +64,7 @@ export class StateWebviewController {
         </body>
         </html>`;
     }
-    
+
     // Check if the webview bundle exists
     if (!fs.existsSync(webviewPath)) {
       return `
@@ -74,18 +77,30 @@ export class StateWebviewController {
         </html>
       `;
     }
-    
+
     // Path to the main.js file
-    const scriptPath = vscode.Uri.joinPath(extensionUri, 'webview-ui', 'dist', 'assets', 'main.js');
+    const scriptPath = vscode.Uri.joinPath(
+      extensionUri,
+      "webview-ui",
+      "out",
+      "assets",
+      "main.js"
+    );
     const scriptUri = webview.asWebviewUri(scriptPath);
-    
+
     // Path to CSS file
-    const cssPath = vscode.Uri.joinPath(extensionUri, 'webview-ui', 'dist', 'assets', 'main.css');
+    const cssPath = vscode.Uri.joinPath(
+      extensionUri,
+      "webview-ui",
+      "out",
+      "assets",
+      "main.css"
+    );
     const cssUri = webview.asWebviewUri(cssPath);
-    
+
     // Use a nonce to allow only specific scripts to run
     const nonce = getNonce();
-    
+
     return `<!DOCTYPE html>
       <html lang="en">
       <head>
@@ -118,23 +133,26 @@ export class StateWebviewController {
 
     // Otherwise, create a new panel
     const panel = vscode.window.createWebviewPanel(
-      'solidityDebuggerState',
-      'Solidity State Visualization',
+      "solidityDebuggerState",
+      "Solidity State Visualization",
       column || vscode.ViewColumn.One,
       {
         // Enable JavaScript in the webview
         enableScripts: true,
         // Restrict the webview to only load resources from the extension's directory
         localResourceRoots: [
-          vscode.Uri.joinPath(extensionUri, 'webview-ui', 'dist'),
-          vscode.Uri.joinPath(extensionUri, 'media')
+          vscode.Uri.joinPath(extensionUri, "webview-ui", "out"),
+          vscode.Uri.joinPath(extensionUri, "media"),
         ],
         // Keep the webview alive in the background
         retainContextWhenHidden: true,
       }
     );
 
-    StateWebviewController.currentPanel = new StateWebviewController(panel, extensionUri);
+    StateWebviewController.currentPanel = new StateWebviewController(
+      panel,
+      extensionUri
+    );
   }
 
   /**
@@ -153,7 +171,7 @@ export class StateWebviewController {
 
     // Update the content based on view changes
     this._panel.onDidChangeViewState(
-      e => {
+      (e) => {
         if (this._panel.visible) {
           this._update();
         }
@@ -164,13 +182,13 @@ export class StateWebviewController {
 
     // Handle messages from the webview
     this._panel.webview.onDidReceiveMessage(
-      message => {
+      (message) => {
         switch (message.type) {
-          case 'ready':
+          case "ready":
             // WebView is ready to receive data
             // Send any initial data here
             break;
-          case 'requestDetail':
+          case "requestDetail":
             // Handle request for detail information
             this._sendDetailData(message.address, message.slot);
             break;
@@ -184,16 +202,21 @@ export class StateWebviewController {
   /**
    * Send state changes data to the webview
    */
-  public sendStateChanges(stateChanges: StateChange[], txHash?: string, contractName?: string, functionName?: string) {
+  public sendStateChanges(
+    stateChanges: StateChange[],
+    txHash?: string,
+    contractName?: string,
+    functionName?: string
+  ) {
     if (this._panel.visible) {
       this._panel.webview.postMessage({
-        type: 'stateChanges',
+        type: "stateChanges",
         data: {
           stateChanges,
           txHash,
           contractName,
-          functionName
-        }
+          functionName,
+        },
       });
     }
   }
@@ -204,8 +227,8 @@ export class StateWebviewController {
   public sendError(message: string) {
     if (this._panel.visible) {
       this._panel.webview.postMessage({
-        type: 'error',
-        message
+        type: "error",
+        message,
       });
     }
   }
@@ -232,7 +255,10 @@ export class StateWebviewController {
    */
   private _update() {
     const webview = this._panel.webview;
-    this._panel.webview.html = StateWebviewController.getWebviewContent(webview, this._extensionUri);
+    this._panel.webview.html = StateWebviewController.getWebviewContent(
+      webview,
+      this._extensionUri
+    );
   }
 
   /**
@@ -243,12 +269,12 @@ export class StateWebviewController {
     // about the specified storage slot from your state tracker
     // For now, we'll just send back the request data
     this._panel.webview.postMessage({
-      type: 'detailData',
+      type: "detailData",
       data: {
         address,
         slot,
         // Include more detailed data here
-      }
+      },
     });
   }
 }
@@ -257,8 +283,9 @@ export class StateWebviewController {
  * Generate a nonce for Content Security Policy
  */
 function getNonce() {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let text = "";
+  const possible =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   for (let i = 0; i < 32; i++) {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }
