@@ -1,26 +1,167 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
+import { SolidityDebuggerProvider } from "./debugAdapter/debuggerProxy";
+import { StateVisualizerPanel } from "./webview/panels/statePanel";
+import { GasAnalyzerPanel } from "./webview/panels/gasPanel";
+import { HelpPanel } from "./webview/panels/helpPanel";
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+  console.log("Solidity Debugger extension is now active");
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "solidity-debugger" is now active!');
+  // Register the debug adapter provider
+  const provider = new SolidityDebuggerProvider();
+  context.subscriptions.push(
+    vscode.debug.registerDebugAdapterDescriptorFactory(
+      "solidityDebug",
+      provider
+    )
+  );
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('solidity-debugger.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from solidity-debugger!');
-	});
+  // Register commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "solidityDebugger.showStateVisualizer",
+      () => {
+        StateVisualizerPanel.createOrShow(context.extensionUri);
+      }
+    ),
+    vscode.commands.registerCommand("solidityDebugger.showGasAnalyzer", () => {
+      GasAnalyzerPanel.createOrShow(context.extensionUri);
+    }),
+    vscode.commands.registerCommand("solidityDebugger.showHelp", () => {
+      HelpPanel.createOrShow(context.extensionUri);
+    })
+  );
 
-	context.subscriptions.push(disposable);
+  // Initialize core services
+  initializeServices(context);
+}
+
+/**
+ * Service for processing smart contract state information
+ */
+export class StateProcessorService implements vscode.Disposable {
+  private disposables: vscode.Disposable[] = [];
+
+  constructor() {
+    console.log("StateProcessorService initialized");
+    // Initialize any event listeners or commands here
+    this.registerCommands();
+  }
+
+  private registerCommands() {
+    // Register any commands this service will handle
+    const analyzeStateCommand = vscode.commands.registerCommand(
+      "extension.analyzeContractState",
+      () => {
+        this.analyzeContractState();
+      }
+    );
+
+    this.disposables.push(analyzeStateCommand);
+  }
+
+  /**
+   * Analyzes the current smart contract state
+   */
+  public analyzeContractState() {
+    vscode.window.showInformationMessage("Analyzing contract state...");
+    // Implementation for state analysis would go here
+  }
+
+  public dispose() {
+    // Clean up any resources when the extension is deactivated
+    this.disposables.forEach((d) => d.dispose());
+  }
+}
+
+/**
+ * Service for analyzing gas consumption in smart contracts
+ */
+export class GasAnalyzerService implements vscode.Disposable {
+  private disposables: vscode.Disposable[] = [];
+
+  constructor() {
+    console.log("GasAnalyzerService initialized");
+    this.registerCommands();
+  }
+
+  private registerCommands() {
+    const analyzeGasCommand = vscode.commands.registerCommand(
+      "extension.analyzeGasUsage",
+      () => {
+        this.analyzeGasUsage();
+      }
+    );
+
+    this.disposables.push(analyzeGasCommand);
+  }
+
+  /**
+   * Analyzes gas usage in the current smart contract
+   */
+  public analyzeGasUsage() {
+    vscode.window.showInformationMessage("Analyzing gas usage...");
+    // Implementation for gas analysis would go here
+  }
+
+  public dispose() {
+    this.disposables.forEach((d) => d.dispose());
+  }
+}
+
+/**
+ * Service for providing educational content about smart contracts
+ */
+export class EducationalContentService implements vscode.Disposable {
+  private disposables: vscode.Disposable[] = [];
+
+  constructor() {
+    console.log("EducationalContentService initialized");
+    this.registerCommands();
+  }
+
+  private registerCommands() {
+    const showTutorialCommand = vscode.commands.registerCommand(
+      "extension.showSmartContractTutorial",
+      () => {
+        this.showTutorial();
+      }
+    );
+
+    this.disposables.push(showTutorialCommand);
+  }
+
+  /**
+   * Shows a tutorial about smart contract development
+   */
+  public showTutorial() {
+    vscode.window.showInformationMessage("Opening smart contract tutorial...");
+    // Implementation for showing tutorials would go here
+  }
+
+  public dispose() {
+    this.disposables.forEach((d) => d.dispose());
+  }
+}
+
+/**
+ * Initializes all services for the extension
+ */
+export function initializeServices(context: vscode.ExtensionContext) {
+  // Initialize state processor service
+  const stateProcessorService = new StateProcessorService();
+  context.subscriptions.push(stateProcessorService);
+
+  // Initialize gas analyzer service
+  const gasAnalyzerService = new GasAnalyzerService();
+  context.subscriptions.push(gasAnalyzerService);
+
+  // Initialize educational content service
+  const educationalContentService = new EducationalContentService();
+  context.subscriptions.push(educationalContentService);
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+  // Clean up resources
+}

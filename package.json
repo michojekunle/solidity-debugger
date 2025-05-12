@@ -1,31 +1,119 @@
 {
   "name": "solidity-debugger",
-  "displayName": "solidity-debugger",
-  "description": "A solidity debugging tool for solidity smart contract developers",
+  "displayName": "Solidity Debugger with Visualized State Changes",
+  "description": "A VS Code extension for debugging Solidity smart contracts with visualized state changes",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.96.0"
   },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [],
   "main": "./out/extension.js",
+  "categories": [
+    "Debuggers",
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onLanguage:solidity",
+    "onDebug"
+  ],
   "contributes": {
     "commands": [
       {
         "command": "solidity-debugger.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "solidityDebugger.showStateVisualizer",
+        "title": "Solidity: Show State Visualizer"
+      },
+      {
+        "command": "solidityDebugger.showGasAnalyzer",
+        "title": "Solidity: Show Gas Analyzer"
+      },
+      {
+        "command": "solidityDebugger.showHelp",
+        "title": "Solidity: Show Help & Resources"
       }
-    ]
+    ],
+    "debuggers": [
+      {
+        "type": "solidityDebug",
+        "label": "Solidity Debug",
+        "program": "./out/debugAdapter.js",
+        "runtime": "node",
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Path to the Solidity file to debug"
+              },
+              "args": {
+                "type": "array",
+                "description": "Command line arguments passed to the program"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Automatically stop after launch"
+              },
+              "trace": {
+                "type": "boolean",
+                "description": "Enable logging of the Debug Adapter Protocol"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "solidityDebug",
+            "request": "launch",
+            "name": "Debug Solidity Contract",
+            "program": "${file}",
+            "stopOnEntry": true
+          }
+        ]
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceLangId == solidity",
+          "command": "solidityDebugger.showStateVisualizer",
+          "group": "navigation"
+        },
+        {
+          "when": "resourceLangId == solidity",
+          "command": "solidityDebugger.showGasAnalyzer",
+          "group": "navigation"
+        },
+        {
+          "when": "resourceLangId == solidity",
+          "command": "solidityDebugger.showHelp",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "test": "jest",
     "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src",
-    "test": "vscode-test"
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@ethersproject/abi": "^5.7.0",
+    "@ethersproject/providers": "^5.7.0",
+    "ethers": "^5.7.0",
+    "web3": "^1.8.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -36,12 +124,13 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.19.0",
-    "typescript": "^5.7.3"
-  },
-  "dependencies": {
-    "@types/react": "^19.0.8",
-    "@types/react-dom": "^19.0.3",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "typescript": "^5.7.3",
+    "@types/glob": "^8.0.0",
+    "glob": "^8.0.3",
+    "jest": "^28.1.3",
+    "ts-jest": "^28.0.7",
+    "ts-loader": "^9.3.1",
+    "webpack": "^5.74.0",
+    "webpack-cli": "^4.10.0"
   }
 }
