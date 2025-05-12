@@ -56,7 +56,7 @@ interface HelpContent {
     public getContextualHelp(sourceCode: string, position: vscode.Position): HelpContent | undefined {
       // Analyze the source code and position to determine the appropriate help content
       // This is a simplified implementation
-      
+      console.log(`Analyzing code at position: ${position.line}:${position.character}`);
       // For example, if the code at the position has storage operations, return storage optimization help
       if (sourceCode.includes('storage')) {
         return this.getHelpContent('storage-optimization');

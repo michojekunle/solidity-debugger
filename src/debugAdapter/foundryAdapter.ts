@@ -2,8 +2,8 @@ import * as childProcess from 'child_process';
 import * as net from 'net';
 import { StateCollector } from '../stateProcessor/stateCollector';
 
-export class HardhatDebugAdapter {
-  private hardhatProcess?: childProcess.ChildProcess;
+export class FoundryDebugAdapter {
+  private foundryProcess?: childProcess.ChildProcess;
   private debugSocket?: net.Socket;
   private stateCollector: StateCollector;
 
@@ -12,10 +12,10 @@ export class HardhatDebugAdapter {
   }
 
   public async start(): Promise<number> {
-    // Launch hardhat node with debugging enabled
-    this.hardhatProcess = childProcess.spawn(
+    // Launch foundry node with debugging enabled
+    this.foundryProcess = childProcess.spawn(
       'npx',
-      ['hardhat', 'node', '--verbose'],
+      ['foundry', 'node', '--verbose'],
       { cwd: this.workspaceRoot }
     );
 
@@ -26,13 +26,14 @@ export class HardhatDebugAdapter {
   private async extractDebugPort(): Promise<number> {
     return new Promise<number>((resolve) => {
       // This is a simplified version - in real implementation,
-      // you would parse the output of hardhat node to find the debug port
-      resolve(8545); // Default port for hardhat node
+      // you would parse the output of foundry node to find the debug port
+      resolve(8545); // Default port for foundry node
+
     });
   }
 
   public async connect(port: number): Promise<void> {
-    // Connect to the hardhat debug port
+    // Connect to the foundry debug port
     this.debugSocket = new net.Socket();
     await new Promise<void>((resolve, reject) => {
       this.debugSocket!.connect(port, 'localhost', () => {
@@ -69,9 +70,9 @@ export class HardhatDebugAdapter {
       this.debugSocket = undefined;
     }
     
-    if (this.hardhatProcess) {
-      this.hardhatProcess.kill();
-      this.hardhatProcess = undefined;
+    if (this.foundryProcess) {
+      this.foundryProcess.kill();
+      this.foundryProcess = undefined;
     }
   }
 }

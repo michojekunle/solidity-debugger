@@ -97,6 +97,15 @@ export class GasAnalyzerPanel {
     webview: vscode.Webview,
     extensionUri: vscode.Uri
   ) {
+
+    console.log("Generating HTML for webview");
+    console.log("Webview URI: ", webview.asWebviewUri(extensionUri));
+    console.log("Extension URI: ", extensionUri);
+    // Use a nonce for Content Security Policy
+    // This is a random string that is used to allow inline scripts
+    // in the webview. It should be unique for each webview instance.
+    // This is a security measure to prevent XSS attacks.
+    // The nonce is generated using a random string generator.
     const nonce = getNonce();
 
     return `<!DOCTYPE html>

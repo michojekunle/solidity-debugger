@@ -172,6 +172,7 @@ export class StateWebviewController {
     // Update the content based on view changes
     this._panel.onDidChangeViewState(
       (e) => {
+        console.log("Event: ",e);
         if (this._panel.visible) {
           this._update();
         }

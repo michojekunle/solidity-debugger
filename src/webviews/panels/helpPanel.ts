@@ -73,6 +73,7 @@ export class HelpPanel {
   private static getHelpContent(key: string) {
     // This would get the help content from the educational content service
     // For demonstration, we're using mock data
+    console.log(`Fetching help content for key: ${key}`);
     const helpContent = {
       key: "storage-optimization",
       title: "Storage Optimization",
@@ -99,6 +100,8 @@ export class HelpPanel {
     webview: vscode.Webview,
     extensionUri: vscode.Uri
   ): string {
+
+    console.log("Webview URI: ", webview.asWebviewUri(extensionUri));
     const nonce = getNonce();
 
     return `<!DOCTYPE html>

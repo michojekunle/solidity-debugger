@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import { SolidityDebuggerProvider } from "./debugAdapter/debuggerProxy";
-import { StateVisualizerPanel } from "./webview/panels/statePanel";
-import { GasAnalyzerPanel } from "./webview/panels/gasPanel";
-import { HelpPanel } from "./webview/panels/helpPanel";
+import { StateVisualizerPanel } from "./webviews/panels/statePanel";
+import { GasAnalyzerPanel } from "./webviews/panels/gasPanel";
+import { HelpPanel } from "./webviews/panels/helpPanel";
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("Solidity Debugger extension is now active");
