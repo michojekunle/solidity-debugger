@@ -99,8 +99,10 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "lint": "eslint",
-    "watch": "tsc -w -p ./"
+    "watch": "tsc -w -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test"
   },
   "dependencies": {
     "@ethersproject/abi": "^5.7.0",
