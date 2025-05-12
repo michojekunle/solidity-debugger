@@ -18,20 +18,20 @@
   "contributes": {
     "commands": [
       {
-        "command": "solidity-debugger.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "solidityDebugger.showStateVisualizer",
-        "title": "Solidity: Show State Visualizer"
+        "title": "Solidity Debugger: Show State Visualizer"
       },
       {
         "command": "solidityDebugger.showGasAnalyzer",
-        "title": "Solidity: Show Gas Analyzer"
+        "title": "Solidity Debugger: Show Gas Analyzer"
       },
       {
-        "command": "solidityDebugger.showHelp",
-        "title": "Solidity: Show Help & Resources"
+        "command": "solidityDebugger.analyzeContractState",
+        "title": "Solidity Debugger: Analyze Contract State"
+      },
+      {
+        "command": "solidityDebugger.analyzeGasUsage",
+        "title": "Solidity Debugger: Analyze Gas Usage"
       }
     ],
     "debuggers": [
@@ -90,7 +90,12 @@
         },
         {
           "when": "resourceLangId == solidity",
-          "command": "solidityDebugger.showHelp",
+        "command": "solidityDebugger.analyzeContractState",
+        "group": "navigation"
+        },
+        {
+          "when": "resourceLangId == solidity",
+          "command": "solidityDebugger.analyzeGasUsage",
           "group": "navigation"
         }
       ]

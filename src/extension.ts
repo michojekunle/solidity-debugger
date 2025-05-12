@@ -43,15 +43,15 @@ export class StateProcessorService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
 
   constructor() {
-    console.log("StateProcessorService initialized");
     // Initialize any event listeners or commands here
     this.registerCommands();
+    console.log("StateProcessorService initialized");
   }
 
   private registerCommands() {
     // Register any commands this service will handle
     const analyzeStateCommand = vscode.commands.registerCommand(
-      "extension.analyzeContractState",
+      "solidityDebugger.analyzeContractState",
       () => {
         this.analyzeContractState();
       }
@@ -81,13 +81,13 @@ export class GasAnalyzerService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
 
   constructor() {
-    console.log("GasAnalyzerService initialized");
     this.registerCommands();
+    console.log("GasAnalyzerService initialized");
   }
 
   private registerCommands() {
     const analyzeGasCommand = vscode.commands.registerCommand(
-      "extension.analyzeGasUsage",
+      "solidityDebugger.analyzeGasUsage",
       () => {
         this.analyzeGasUsage();
       }
@@ -116,13 +116,13 @@ export class EducationalContentService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
 
   constructor() {
-    console.log("EducationalContentService initialized");
     this.registerCommands();
+    console.log("EducationalContentService initialized");
   }
 
   private registerCommands() {
     const showTutorialCommand = vscode.commands.registerCommand(
-      "extension.showSmartContractTutorial",
+      "solidityDebugger.showSmartContractTutorial",
       () => {
         this.showTutorial();
       }
@@ -148,6 +148,7 @@ export class EducationalContentService implements vscode.Disposable {
  * Initializes all services for the extension
  */
 export function initializeServices(context: vscode.ExtensionContext) {
+  console.log("Initializing services...");
   // Initialize state processor service
   const stateProcessorService = new StateProcessorService();
   context.subscriptions.push(stateProcessorService);
