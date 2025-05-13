@@ -1,15 +1,15 @@
 import * as vscode from "vscode";
-import { SolidityDebuggerProvider } from "./debugAdapter/debuggerProxy";
+import { SolidityDebuggerProvider } from "./core/debugAdapter/debuggerProxy";
 import { StateVisualizerPanel } from "./webviews/panels/statePanel";
 import { GasAnalyzerPanel } from "./webviews/panels/gasPanel";
 import { HelpPanel } from "./webviews/panels/helpPanel";
-import { StateCollector, StateChange, StateSnapshot } from './stateProcessor/stateCollector';
+import { StateCollector, StateSnapshot } from './core/stateProcessor/stateCollector';
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("Solidity Debugger extension is now active");
 
   // Register the debug adapter provider
-  const provider = new SolidityDebuggerProvider();
+  const provider = new SolidityDebuggerProvider(context);
   context.subscriptions.push(
     vscode.debug.registerDebugAdapterDescriptorFactory(
       "solidityDebug",
@@ -36,10 +36,6 @@ export function activate(context: vscode.ExtensionContext) {
   // Initialize core services
   initializeServices(context);
 }
-
-/**
- * Service for processing smart contract state information
- */
 
 /**
  * Service for processing and visualizing smart contract state information
@@ -121,7 +117,23 @@ export class StateProcessorService implements vscode.Disposable {
       }
     );
     
-    // Command to inject test data for development/testing
+    // Command to analyze a deployed contract
+    const analyzeDeployedCommand = vscode.commands.registerCommand(
+      "solidityDebugger.analyzeDeployedContract",
+      async () => {
+        await this.analyzeDeployedContract();
+      }
+    );
+    
+    // Command to analyze a specific transaction
+    const analyzeTransactionCommand = vscode.commands.registerCommand(
+      "solidityDebugger.analyzeTransaction",
+      async () => {
+        await this.analyzeTransaction();
+      }
+    );
+    
+    // Command to inject test data (only for development/testing)
     const injectTestDataCommand = vscode.commands.registerCommand(
       "solidityDebugger.injectTestData",
       () => {
@@ -135,6 +147,8 @@ export class StateProcessorService implements vscode.Disposable {
       nextStateCommand,
       gotoStateCommand,
       resetStateCommand,
+      analyzeDeployedCommand,
+      analyzeTransactionCommand,
       injectTestDataCommand
     );
   }
@@ -143,7 +157,7 @@ export class StateProcessorService implements vscode.Disposable {
    * Analyzes the current smart contract state
    * This is the main function called from the UI
    */
-  public analyzeContractState() {
+  public async analyzeContractState() {
     vscode.window.showInformationMessage("Analyzing contract state...");
     
     // Get the active Solidity file
@@ -153,16 +167,134 @@ export class StateProcessorService implements vscode.Disposable {
       return;
     }
     
-    // In a real implementation, you would:
-    // 1. Trigger a debug session or use an existing one
-    // 2. Capture trace data from the debug adapter
-    // 3. Process the trace data
+    // First step is to analyze the contract structure from source code
+    const success = await this.stateCollector.analyzeActiveContract();
     
-    // For demo purposes, we'll inject some test data
-    this.injectTestData();
+    if (!success) {
+      // If source analysis failed, give user options
+      const choice = await vscode.window.showErrorMessage(
+        "Failed to analyze contract structure. How would you like to proceed?",
+        "Use test data", 
+        "Analyze deployed contract", 
+        "Cancel"
+      );
+      
+      if (choice === "Use test data") {
+        this.injectTestData();
+      } else if (choice === "Analyze deployed contract") {
+        await this.analyzeDeployedContract();
+      } else {
+        return; // User cancelled
+      }
+    } else {
+      // Source analysis succeeded, determine next steps
+      const choice = await vscode.window.showInformationMessage(
+        "Contract structure analyzed. What would you like to do next?",
+        "Analyze deployed instance",
+        "Analyze transaction",
+        "View structure only"
+      );
+      
+      if (choice === "Analyze deployed instance") {
+        await this.analyzeDeployedContract();
+      } else if (choice === "Analyze transaction") {
+        await this.analyzeTransaction();
+      }
+      // For "View structure only", we don't need to do anything else
+    }
     
     // Open the state visualizer panel
     vscode.commands.executeCommand("solidityDebugger.showStateVisualizer");
+  }
+
+  /**
+   * Analyze a deployed contract instance
+   */
+  private async analyzeDeployedContract() {
+    const address = await vscode.window.showInputBox({
+      prompt: "Enter the deployed contract address",
+      placeHolder: "0x...",
+      validateInput: (value) => {
+        // Simple validation for Ethereum address format
+        if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
+          return "Please enter a valid Ethereum address (0x followed by 40 hex characters)";
+        }
+        return null;
+      }
+    });
+    
+    if (!address) {
+      vscode.window.showInformationMessage("Contract analysis cancelled");
+      return;
+    }
+    
+    vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Analyzing contract at ${address}`,
+      cancellable: false
+    }, async () => {
+      const success = await this.stateCollector.analyzeDeployedContract(address);
+      
+      if (success) {
+        vscode.window.showInformationMessage(`Successfully analyzed contract at ${address}`);
+      } else {
+        vscode.window.showErrorMessage(`Failed to analyze contract at ${address}`);
+      }
+    });
+  }
+
+  /**
+   * Analyze a specific transaction
+   */
+  private async analyzeTransaction() {
+    const txHash = await vscode.window.showInputBox({
+      prompt: "Enter transaction hash to analyze",
+      placeHolder: "0x...",
+      validateInput: (value) => {
+        // Simple validation for transaction hash format
+        if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+          return "Please enter a valid transaction hash (0x followed by 64 hex characters)";
+        }
+        return null;
+      }
+    });
+    
+    if (!txHash) {
+      vscode.window.showInformationMessage("Transaction analysis cancelled");
+      return;
+    }
+    
+    vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Analyzing transaction ${txHash}`,
+      cancellable: false
+    }, async () => {
+      const success = await this.stateCollector.analyzeTransaction(txHash);
+      
+      if (success) {
+        vscode.window.showInformationMessage(`Successfully analyzed transaction ${txHash}`);
+      } else {
+        vscode.window.showErrorMessage(`Failed to analyze transaction ${txHash}`);
+      }
+    });
+  }
+
+  /**
+   * Process debugging session data
+   */
+  public async processDebugSession(session: vscode.DebugSession) {
+    vscode.window.showInformationMessage(`Processing debug session: ${session.name}`);
+    
+    // Start collecting state from the debug session
+    this.stateCollector.collectDebugState(session);
+  }
+
+  /**
+   * Process memory dump data
+   * This can be called from the debug adapter or other sources
+   */
+  public processMemoryDump(memoryData: any) {
+    return this.stateCollector.analyzeMemoryDump(memoryData);
   }
 
   /**
@@ -223,16 +355,68 @@ export class StateProcessorService implements vscode.Disposable {
       for (const change of snapshot.changes) {
         const key = change.variableName || `slot_${change.slot}`;
         
+        // Create a friendly representation of the value
+        const friendlyValue = this.formatValueForDisplay(change.newValue, change.typeInfo);
+        
         stateByVariable[key] = {
           type: change.typeInfo || 'unknown',
           value: change.newValue,
+          displayValue: friendlyValue,
           previousValue: change.oldValue,
-          lastChanged: snapshot.id
+          lastChanged: snapshot.id,
+          slot: change.slot,
+          operation: change.operation
         };
       }
     }
     
     return stateByVariable;
+  }
+
+  /**
+   * Format a value for display based on its type
+   */
+  private formatValueForDisplay(value: string, typeInfo?: string): string {
+    if (!value) return "null";
+    
+    // Remove 0x prefix for processing
+    const rawValue = value.startsWith('0x') ? value.slice(2) : value;
+    
+    // Convert based on inferred/known type
+    if (typeInfo) {
+      if (typeInfo.includes('Boolean')) {
+        // For boolean values
+        return rawValue === '0' ? 'false' : 'true';
+      }
+      
+      if (typeInfo.includes('Address')) {
+        // For Ethereum addresses - keep 0x prefix
+        return value.toLowerCase();
+      }
+      
+      if (typeInfo.includes('Number')) {
+        // For number types, convert to decimal
+        try {
+          // Convert hex to decimal
+          const decimal = BigInt(`0x${rawValue}`).toString(10);
+          return decimal;
+        } catch (e) {
+          return value; // Return original if conversion fails
+        }
+      }
+    }
+    
+    // For unknown types with common patterns
+    if (rawValue === '0') return '0';
+    if (rawValue === '1') return '1';
+    
+    // If it looks like an address (20 bytes)
+    if (rawValue.length === 40) {
+      return `0x${rawValue.toLowerCase()}`;
+    }
+    
+    // Default case: return the original value
+    return value;
   }
 
   /**
@@ -251,8 +435,11 @@ export class StateProcessorService implements vscode.Disposable {
 
   /**
    * Inject test data for development and testing
+   * This should only be used during development or when other methods fail
    */
   private injectTestData() {
+    vscode.window.showInformationMessage("Using synthetic test data for visualization");
+    
     const testTraceData = {
       hash: '0x123456789abcdef',
       to: '0xContractAddress',
@@ -288,7 +475,7 @@ export class StateProcessorService implements vscode.Disposable {
       ]
     };
     
-    // Process the test data
+    // Add some fake variable names to make the test data more realistic
     this.stateCollector.processTraceData(testTraceData);
     
     // Simulate a second transaction

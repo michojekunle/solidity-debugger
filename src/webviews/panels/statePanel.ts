@@ -89,8 +89,8 @@ export class StateVisualizerPanel {
     }
   
     private _getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.Uri) {
-      // Get the local path to main script run in the webview
-      const scriptPathOnDisk = vscode.Uri.joinPath(extensionUri, 'webview-ui', 'build', 'main.js');
+      // Get the local path to index script run in the webview
+      const scriptPathOnDisk = vscode.Uri.joinPath(extensionUri, 'webview-ui', 'build', 'assets', 'index.js');
       const scriptUri = webview.asWebviewUri(scriptPathOnDisk);
       
       // Use a nonce to only allow specific scripts to be run

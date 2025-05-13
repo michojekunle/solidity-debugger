@@ -34,7 +34,7 @@ export class StateWebviewController {
     extensionUri: vscode.Uri
   ): string {
     // Local path to the webview bundle
-    const webviewPath = path.join(extensionUri.fsPath, "webview-ui", "out");
+    const webviewPath = path.join(extensionUri.fsPath, "webview-ui", "build");
 
     // Check if we're running in development mode
     const devMode = process.env.NODE_ENV === "development";
@@ -60,7 +60,7 @@ export class StateWebviewController {
         </head>
         <body>
           <div id="root"></div>
-          <script src="http://localhost:3000/src/main.tsx" type="module"></script>
+          <script src="http://localhost:3000/src/index.tsx" type="module"></script>
         </body>
         </html>`;
     }
@@ -78,13 +78,13 @@ export class StateWebviewController {
       `;
     }
 
-    // Path to the main.js file
+    // Path to the index.js file
     const scriptPath = vscode.Uri.joinPath(
       extensionUri,
       "webview-ui",
-      "out",
+      "build",
       "assets",
-      "main.js"
+      "index.js"
     );
     const scriptUri = webview.asWebviewUri(scriptPath);
 
@@ -92,9 +92,9 @@ export class StateWebviewController {
     const cssPath = vscode.Uri.joinPath(
       extensionUri,
       "webview-ui",
-      "out",
+      "build",
       "assets",
-      "main.css"
+      "index.css"
     );
     const cssUri = webview.asWebviewUri(cssPath);
 
@@ -141,7 +141,7 @@ export class StateWebviewController {
         enableScripts: true,
         // Restrict the webview to only load resources from the extension's directory
         localResourceRoots: [
-          vscode.Uri.joinPath(extensionUri, "webview-ui", "out"),
+          vscode.Uri.joinPath(extensionUri, "webview-ui", "build"),
           vscode.Uri.joinPath(extensionUri, "media"),
         ],
         // Keep the webview alive in the background

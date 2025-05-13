@@ -9,11 +9,13 @@
 		],
 		"sourceMap": true,
 		"jsx": "react-jsx",
-		"rootDir": "src",
+		"rootDir": "./",
 		"strict": true,   /* enable all strict type-checking options */
 		/* Additional Checks */
 		// "noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
 		// "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
 		"noUnusedParameters": true,  /* Report errors on unused parameters. */
+		"allowImportingTsExtensions": true, /* Allow importing .ts files that contain only types. */
+		"noEmit": true
 	}
 }
