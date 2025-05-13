@@ -32,6 +32,14 @@
       {
         "command": "solidityDebugger.analyzeGasUsage",
         "title": "Solidity Debugger: Analyze Gas Usage"
+      },
+      {
+        "command": "solidityDebugger.stateVisualiser.nextStep",
+        "title": "Solidity Debugger: Next Step"
+      },
+      {
+        "command": "solidityDebugger.stateVisualiser.resetState",
+        "title": "State Visualiser: Reset State"
       }
     ],
     "debuggers": [
@@ -97,6 +105,16 @@
           "when": "resourceLangId == solidity",
           "command": "solidityDebugger.analyzeGasUsage",
           "group": "navigation"
+        }
+      ],
+    "webview/context": [
+        {
+          "command": "solidityDebugger.stateVisualiser.nextStep",
+          "when": "webviewId == 'stateVisualizer'"
+        },
+        {
+          "command": "solidityDebugger.stateVisualiser.resetState",
+          "when": "webviewId == 'stateVisualizer'"
         }
       ]
     }

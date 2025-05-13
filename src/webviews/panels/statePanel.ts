@@ -42,7 +42,7 @@ export class StateVisualizerPanel {
           // Restrict the webview to only load resources from the `media` directory
           localResourceRoots: [
             vscode.Uri.joinPath(extensionUri, 'media'),
-            vscode.Uri.joinPath(extensionUri, 'webview-ui/build')
+            vscode.Uri.joinPath(extensionUri, 'webview-ui", "build')
           ],
           
           // Retain context when the panel goes into the background

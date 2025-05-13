@@ -41,7 +41,7 @@ export class GasAnalyzerPanel {
         enableScripts: true,
         localResourceRoots: [
           vscode.Uri.joinPath(extensionUri, "media"),
-          vscode.Uri.joinPath(extensionUri, "webview-ui/build"),
+          vscode.Uri.joinPath(extensionUri, "webview-ui", "build"),
         ],
         retainContextWhenHidden: true,
       }
