@@ -90,8 +90,8 @@
         },
         {
           "when": "resourceLangId == solidity",
-        "command": "solidityDebugger.analyzeContractState",
-        "group": "navigation"
+          "command": "solidityDebugger.analyzeContractState",
+          "group": "navigation"
         },
         {
           "when": "resourceLangId == solidity",
@@ -102,6 +102,9 @@
     }
   },
   "scripts": {
+    "install:all": "npm install && cd webview-ui && npm install",
+    "start:webview": "cd webview-ui && npm run dev",
+    "build:webview": "cd webview-ui && npm run build",
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
@@ -118,6 +121,7 @@
     "minimatch": "^5.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "solc": "^0.8.30",
     "web3": "^1.8.0"
   },
   "devDependencies": {
