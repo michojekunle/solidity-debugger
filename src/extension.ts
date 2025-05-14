@@ -3,7 +3,10 @@ import { SolidityDebuggerProvider } from "./core/debugAdapter/debuggerProxy";
 import { StateVisualizerPanel } from "./webviews/panels/statePanel";
 import { GasAnalyzerPanel } from "./webviews/panels/gasPanel";
 import { HelpPanel } from "./webviews/panels/helpPanel";
-import { StateCollector, StateSnapshot } from './core/stateProcessor/stateCollector';
+import {
+  StateCollector,
+  StateSnapshot,
+} from "./core/stateProcessor/stateCollector";
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("Solidity Debugger extension is now active");
@@ -44,14 +47,14 @@ export class StateProcessorService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
   private stateCollector: StateCollector;
   private currentSnapshotId: number = -1;
-  
+
   // Event emitters for UI updates
   private stateUpdateEmitter = new vscode.EventEmitter<{
     currentState: Record<string, any>;
     history: StateSnapshot[];
     currentStep: number;
   }>();
-  
+
   public readonly onStateUpdated = this.stateUpdateEmitter.event;
 
   constructor(context: vscode.ExtensionContext) {
@@ -66,7 +69,7 @@ export class StateProcessorService implements vscode.Disposable {
    */
   private registerEventListeners() {
     this.disposables.push(
-      this.stateCollector.onSnapshotCreated(snapshot => {
+      this.stateCollector.onSnapshotCreated((snapshot) => {
         this.currentSnapshotId = snapshot.id;
         this.notifyStateUpdate();
       })
@@ -84,7 +87,7 @@ export class StateProcessorService implements vscode.Disposable {
         this.analyzeContractState();
       }
     );
-    
+
     // Command to navigate to previous state snapshot
     const prevStateCommand = vscode.commands.registerCommand(
       "solidityDebugger.previousState",
@@ -92,7 +95,7 @@ export class StateProcessorService implements vscode.Disposable {
         this.navigateToPreviousState();
       }
     );
-    
+
     // Command to navigate to next state snapshot
     const nextStateCommand = vscode.commands.registerCommand(
       "solidityDebugger.nextState",
@@ -100,7 +103,7 @@ export class StateProcessorService implements vscode.Disposable {
         this.navigateToNextState();
       }
     );
-    
+
     // Command to navigate to a specific state snapshot
     const gotoStateCommand = vscode.commands.registerCommand(
       "solidityDebugger.gotoState",
@@ -108,7 +111,7 @@ export class StateProcessorService implements vscode.Disposable {
         this.navigateToState(snapshotId);
       }
     );
-    
+
     // Command to reset state visualization
     const resetStateCommand = vscode.commands.registerCommand(
       "solidityDebugger.resetStateVisualizer",
@@ -116,7 +119,7 @@ export class StateProcessorService implements vscode.Disposable {
         this.resetState();
       }
     );
-    
+
     // Command to analyze a deployed contract
     const analyzeDeployedCommand = vscode.commands.registerCommand(
       "solidityDebugger.analyzeDeployedContract",
@@ -124,7 +127,7 @@ export class StateProcessorService implements vscode.Disposable {
         await this.analyzeDeployedContract();
       }
     );
-    
+
     // Command to analyze a specific transaction
     const analyzeTransactionCommand = vscode.commands.registerCommand(
       "solidityDebugger.analyzeTransaction",
@@ -132,7 +135,7 @@ export class StateProcessorService implements vscode.Disposable {
         await this.analyzeTransaction();
       }
     );
-    
+
     // Command to inject test data (only for development/testing)
     const injectTestDataCommand = vscode.commands.registerCommand(
       "solidityDebugger.injectTestData",
@@ -159,26 +162,26 @@ export class StateProcessorService implements vscode.Disposable {
    */
   public async analyzeContractState() {
     vscode.window.showInformationMessage("Analyzing contract state...");
-    
+
     // Get the active Solidity file
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== 'solidity') {
+    if (!editor || editor.document.languageId !== "solidity") {
       vscode.window.showErrorMessage("No Solidity file is currently active");
       return;
     }
-    
+
     // First step is to analyze the contract structure from source code
     const success = await this.stateCollector.analyzeActiveContract();
-    
+
     if (!success) {
       // If source analysis failed, give user options
       const choice = await vscode.window.showErrorMessage(
         "Failed to analyze contract structure. How would you like to proceed?",
-        "Use test data", 
-        "Analyze deployed contract", 
+        "Use test data",
+        "Analyze deployed contract",
         "Cancel"
       );
-      
+
       if (choice === "Use test data") {
         this.injectTestData();
       } else if (choice === "Analyze deployed contract") {
@@ -194,7 +197,7 @@ export class StateProcessorService implements vscode.Disposable {
         "Analyze transaction",
         "View structure only"
       );
-      
+
       if (choice === "Analyze deployed instance") {
         await this.analyzeDeployedContract();
       } else if (choice === "Analyze transaction") {
@@ -202,7 +205,7 @@ export class StateProcessorService implements vscode.Disposable {
       }
       // For "View structure only", we don't need to do anything else
     }
-    
+
     // Open the state visualizer panel
     vscode.commands.executeCommand("solidityDebugger.showStateVisualizer");
   }
@@ -220,27 +223,36 @@ export class StateProcessorService implements vscode.Disposable {
           return "Please enter a valid Ethereum address (0x followed by 40 hex characters)";
         }
         return null;
-      }
+      },
     });
-    
+
     if (!address) {
       vscode.window.showInformationMessage("Contract analysis cancelled");
       return;
     }
-    
-    vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Analyzing contract at ${address}`,
-      cancellable: false
-    }, async () => {
-      const success = await this.stateCollector.analyzeDeployedContract(address);
-      
-      if (success) {
-        vscode.window.showInformationMessage(`Successfully analyzed contract at ${address}`);
-      } else {
-        vscode.window.showErrorMessage(`Failed to analyze contract at ${address}`);
+
+    vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Analyzing contract at ${address}`,
+        cancellable: false,
+      },
+      async () => {
+        const success = await this.stateCollector.analyzeDeployedContract(
+          address
+        );
+
+        if (success) {
+          vscode.window.showInformationMessage(
+            `Successfully analyzed contract at ${address}`
+          );
+        } else {
+          vscode.window.showErrorMessage(
+            `Failed to analyze contract at ${address}`
+          );
+        }
       }
-    });
+    );
   }
 
   /**
@@ -256,35 +268,44 @@ export class StateProcessorService implements vscode.Disposable {
           return "Please enter a valid transaction hash (0x followed by 64 hex characters)";
         }
         return null;
-      }
+      },
     });
-    
+
     if (!txHash) {
       vscode.window.showInformationMessage("Transaction analysis cancelled");
       return;
     }
-    
-    vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Analyzing transaction ${txHash}`,
-      cancellable: false
-    }, async () => {
-      const success = await this.stateCollector.analyzeTransaction(txHash);
-      
-      if (success) {
-        vscode.window.showInformationMessage(`Successfully analyzed transaction ${txHash}`);
-      } else {
-        vscode.window.showErrorMessage(`Failed to analyze transaction ${txHash}`);
+
+    vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Analyzing transaction ${txHash}`,
+        cancellable: false,
+      },
+      async () => {
+        const success = await this.stateCollector.analyzeTransaction(txHash);
+
+        if (success) {
+          vscode.window.showInformationMessage(
+            `Successfully analyzed transaction ${txHash}`
+          );
+        } else {
+          vscode.window.showErrorMessage(
+            `Failed to analyze transaction ${txHash}`
+          );
+        }
       }
-    });
+    );
   }
 
   /**
    * Process debugging session data
    */
   public async processDebugSession(session: vscode.DebugSession) {
-    vscode.window.showInformationMessage(`Processing debug session: ${session.name}`);
-    
+    vscode.window.showInformationMessage(
+      `Processing debug session: ${session.name}`
+    );
+
     // Start collecting state from the debug session
     this.stateCollector.collectDebugState(session);
   }
@@ -347,29 +368,32 @@ export class StateProcessorService implements vscode.Disposable {
 
     // Build state up to the current snapshot
     const stateByVariable: Record<string, any> = {};
-    
+
     // Process all snapshots up to the current one
     for (let i = 0; i <= this.currentSnapshotId; i++) {
       const snapshot = snapshots[i];
-      
+
       for (const change of snapshot.changes) {
         const key = change.variableName || `slot_${change.slot}`;
-        
+
         // Create a friendly representation of the value
-        const friendlyValue = this.formatValueForDisplay(change.newValue, change.typeInfo);
-        
+        const friendlyValue = this.formatValueForDisplay(
+          change.newValue,
+          change.typeInfo
+        );
+
         stateByVariable[key] = {
-          type: change.typeInfo || 'unknown',
+          type: change.typeInfo || "unknown",
           value: change.newValue,
           displayValue: friendlyValue,
           previousValue: change.oldValue,
           lastChanged: snapshot.id,
           slot: change.slot,
-          operation: change.operation
+          operation: change.operation,
         };
       }
     }
-    
+
     return stateByVariable;
   }
 
@@ -378,23 +402,23 @@ export class StateProcessorService implements vscode.Disposable {
    */
   private formatValueForDisplay(value: string, typeInfo?: string): string {
     if (!value) return "null";
-    
+
     // Remove 0x prefix for processing
-    const rawValue = value.startsWith('0x') ? value.slice(2) : value;
-    
+    const rawValue = value.startsWith("0x") ? value.slice(2) : value;
+
     // Convert based on inferred/known type
     if (typeInfo) {
-      if (typeInfo.includes('Boolean')) {
+      if (typeInfo.includes("Boolean")) {
         // For boolean values
-        return rawValue === '0' ? 'false' : 'true';
+        return rawValue === "0" ? "false" : "true";
       }
-      
-      if (typeInfo.includes('Address')) {
+
+      if (typeInfo.includes("Address")) {
         // For Ethereum addresses - keep 0x prefix
         return value.toLowerCase();
       }
-      
-      if (typeInfo.includes('Number')) {
+
+      if (typeInfo.includes("Number")) {
         // For number types, convert to decimal
         try {
           // Convert hex to decimal
@@ -405,16 +429,16 @@ export class StateProcessorService implements vscode.Disposable {
         }
       }
     }
-    
+
     // For unknown types with common patterns
-    if (rawValue === '0') return '0';
-    if (rawValue === '1') return '1';
-    
+    if (rawValue === "0") return "0";
+    if (rawValue === "1") return "1";
+
     // If it looks like an address (20 bytes)
     if (rawValue.length === 40) {
       return `0x${rawValue.toLowerCase()}`;
     }
-    
+
     // Default case: return the original value
     return value;
   }
@@ -425,11 +449,11 @@ export class StateProcessorService implements vscode.Disposable {
   private notifyStateUpdate() {
     const currentState = this.buildCurrentState();
     const snapshots = this.stateCollector.getSnapshots();
-    
+
     this.stateUpdateEmitter.fire({
       currentState,
       history: snapshots,
-      currentStep: this.currentSnapshotId
+      currentStep: this.currentSnapshotId,
     });
   }
 
@@ -438,68 +462,70 @@ export class StateProcessorService implements vscode.Disposable {
    * This should only be used during development or when other methods fail
    */
   private injectTestData() {
-    vscode.window.showInformationMessage("Using synthetic test data for visualization");
-    
+    vscode.window.showInformationMessage(
+      "Using synthetic test data for visualization"
+    );
+
     const testTraceData = {
-      hash: '0x123456789abcdef',
-      to: '0xContractAddress',
+      hash: "0x123456789abcdef",
+      to: "0xContractAddress",
       structLogs: [
         {
           pc: 100,
-          op: 'SSTORE',
-          stack: ['0x0', '0x5'], // slot 0, value 5
+          op: "SSTORE",
+          stack: ["0x0", "0x5"], // slot 0, value 5
           depth: 1,
-          gas: 100000
+          gas: 100000,
         },
         {
           pc: 105,
-          op: 'SSTORE',
-          stack: ['0x1', '0xa'], // slot 1, value 10
+          op: "SSTORE",
+          stack: ["0x1", "0xa"], // slot 1, value 10
           depth: 1,
-          gas: 95000
+          gas: 95000,
         },
         {
           pc: 110,
-          op: 'SLOAD',
-          stack: ['0x0'],
+          op: "SLOAD",
+          stack: ["0x0"],
           depth: 1,
-          gas: 90000
+          gas: 90000,
         },
         {
           pc: 120,
-          op: 'SSTORE',
-          stack: ['0x0', '0x7'], // slot 0, value 7 (update)
+          op: "SSTORE",
+          stack: ["0x0", "0x7"], // slot 0, value 7 (update)
           depth: 1,
-          gas: 85000
-        }
-      ]
+          gas: 85000,
+        },
+      ],
     };
-    
+
     // Add some fake variable names to make the test data more realistic
     this.stateCollector.processTraceData(testTraceData);
-    
+
     // Simulate a second transaction
     const secondTraceData = {
-      hash: '0x987654321abcdef',
-      to: '0xContractAddress',
+      hash: "0x987654321abcdef",
+      to: "0xContractAddress",
       structLogs: [
         {
           pc: 200,
-          op: 'SSTORE',
-          stack: ['0x2', '0x14'], // slot 2, value 20
+          op: "SSTORE",
+          stack: ["0x2", "0x14"], // slot 2, value 20
           depth: 1,
-          gas: 100000
+          gas: 100000,
         },
         {
           pc: 210,
-          op: 'SSTORE',
-          stack: ['0x1', '0xf'], // slot 1, value 15 (update)
+          op: "SSTORE",
+          stack: ["0x1", "0xf"], // slot 1, value 15 (update)
           depth: 1,
-          gas: 95000
-        }
-      ]
+          gas: 95000,
+        },
+      ],
     };
-    
+
     this.stateCollector.processTraceData(secondTraceData);
   }
 
@@ -507,7 +533,7 @@ export class StateProcessorService implements vscode.Disposable {
    * Clean up resources when the extension is deactivated
    */
   public dispose() {
-    this.disposables.forEach(d => d.dispose());
+    this.disposables.forEach((d) => d.dispose());
   }
 }
 
