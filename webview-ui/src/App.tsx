@@ -23,7 +23,7 @@ const App: React.FC = () => {
     window.addEventListener("message", handleMessage);
 
     // Request initial state changes when component mounts
-    vscode.postMessage({
+    vscode && vscode.postMessage({
       command: "getStateChanges",
     });
 
@@ -50,6 +50,7 @@ const App: React.FC = () => {
   };
 
   const requestAnalysis = () => {
+    if(!vscode) return;
     setLoading(true);
     vscode.postMessage({
       command: "analyzeContract",

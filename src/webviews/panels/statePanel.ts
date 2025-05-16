@@ -244,10 +244,6 @@ export class StateVisualizerPanel {
       </head>
       <body>
         <div id="root"></div>
-        <script nonce="${nonce}">
-          // This is critical - declare the acquireVsCodeApi function before loading React
-          const vscode = acquireVsCodeApi();
-        </script>
         <script nonce="${nonce}" src="${scriptUri}"></script>
       </body>
       </html>`;
