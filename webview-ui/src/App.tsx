@@ -1,35 +1,107 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+"use client";
 
-function App() {
-  const [count, setCount] = useState(0)
+import type React from "react";
+import { useEffect, useState } from "react";
+import { vscode } from "./vscode";
+import {
+  VSCodeButton,
+  VSCodePanels,
+  VSCodePanelTab,
+  VSCodePanelView,
+  VSCodeProgressRing,
+} from "@vscode/webview-ui-toolkit/react";
+import ContractStateVisualizer from "./components/ContractStateVisualiser";
+import type { StateChange } from "./types";
+
+const App: React.FC = () => {
+  const [loading, setLoading] = useState<boolean>(true);
+  const [stateChanges, setStateChanges] = useState<StateChange[]>([]);
+  const [, setActiveTab] = useState<string>("state");
+
+  useEffect(() => {
+    // Set up message listener
+    window.addEventListener("message", handleMessage);
+
+    // Request initial state changes when component mounts
+    vscode.postMessage({
+      command: "getStateChanges",
+    });
+
+    return () => {
+      window.removeEventListener("message", handleMessage);
+    };
+  }, []);
+
+  const handleMessage = (event: MessageEvent) => {
+    const message = event.data;
+
+    switch (message.command) {
+      case "updateStateChanges":
+        setStateChanges(message.stateChanges || []);
+        setLoading(false);
+        break;
+
+      case "contractAnalyzed":
+        // Handle when a new contract is analyzed
+        setLoading(false);
+        setStateChanges(message.stateChanges || []);
+        break;
+    }
+  };
+
+  const requestAnalysis = () => {
+    setLoading(true);
+    vscode.postMessage({
+      command: "analyzeContract",
+    });
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+    <div className="container">
+      <header>
+        <h1>Solidity State Visualizer</h1>
+        <VSCodeButton onClick={requestAnalysis}>
+          Analyze Current Contract
+        </VSCodeButton>
+      </header>
 
-export default App
+      <VSCodePanels>
+        <VSCodePanelTab id="state" onClick={() => setActiveTab("state")}>
+          State Changes
+        </VSCodePanelTab>
+        <VSCodePanelTab
+          id="variables"
+          onClick={() => setActiveTab("variables")}
+        >
+          Variables
+        </VSCodePanelTab>
+        <VSCodePanelTab id="storage" onClick={() => setActiveTab("storage")}>
+          Storage Layout
+        </VSCodePanelTab>
+
+        <VSCodePanelView id="state-view">
+          {loading ? (
+            <div className="loading-container">
+              <VSCodeProgressRing />
+              <p>Loading contract state...</p>
+            </div>
+          ) : stateChanges.length > 0 ? (
+            <ContractStateVisualizer stateChanges={stateChanges} />
+          ) : (
+            <div className="empty-state">
+              <p>
+                No state changes detected. Analyze a contract to visualize its
+                state.
+              </p>
+              <VSCodeButton onClick={requestAnalysis}>
+                Analyze Contract
+              </VSCodeButton>
+            </div>
+          )}
+        </VSCodePanelView>
+      </VSCodePanels>
+    </div>
+  );
+};
+
+export default App;

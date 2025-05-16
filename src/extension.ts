@@ -5,8 +5,11 @@ import { GasAnalyzerPanel } from "./webviews/panels/gasPanel";
 import { HelpPanel } from "./webviews/panels/helpPanel";
 import {
   StateCollector,
-  StateSnapshot,
+  type StateSnapshot,
 } from "./core/stateProcessor/stateCollector";
+
+// Global reference to the state processor service
+let stateProcessorService: StateProcessorService | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("Solidity Debugger extension is now active");
@@ -20,12 +23,20 @@ export function activate(context: vscode.ExtensionContext) {
     )
   );
 
+  // Initialize core services
+  const services = initializeServices(context);
+  stateProcessorService = services.stateProcessorService;
+
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "solidityDebugger.showStateVisualizer",
       () => {
-        StateVisualizerPanel.createOrShow(context.extensionUri);
+        // Pass the state processor service to the panel
+        StateVisualizerPanel.createOrShow(
+          context.extensionUri,
+          stateProcessorService
+        );
       }
     ),
     vscode.commands.registerCommand("solidityDebugger.showGasAnalyzer", () => {
@@ -35,9 +46,6 @@ export function activate(context: vscode.ExtensionContext) {
       HelpPanel.createOrShow(context.extensionUri);
     })
   );
-
-  // Initialize core services
-  initializeServices(context);
 }
 
 /**
@@ -46,7 +54,7 @@ export function activate(context: vscode.ExtensionContext) {
 export class StateProcessorService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
   private stateCollector: StateCollector;
-  private currentSnapshotId: number = -1;
+  private currentSnapshotId = -1;
 
   // Event emitters for UI updates
   private stateUpdateEmitter = new vscode.EventEmitter<{
@@ -69,7 +77,7 @@ export class StateProcessorService implements vscode.Disposable {
    */
   private registerEventListeners() {
     this.disposables.push(
-      this.stateCollector.onSnapshotCreated((snapshot) => {
+      this.stateCollector.onSnapshotCreated((snapshot: any) => {
         this.currentSnapshotId = snapshot.id;
         this.notifyStateUpdate();
       })
@@ -299,23 +307,10 @@ export class StateProcessorService implements vscode.Disposable {
   }
 
   /**
-   * Process debugging session data
+   * Get the current available contract state snapshots
    */
-  public async processDebugSession(session: vscode.DebugSession) {
-    vscode.window.showInformationMessage(
-      `Processing debug session: ${session.name}`
-    );
-
-    // Start collecting state from the debug session
-    this.stateCollector.collectDebugState(session);
-  }
-
-  /**
-   * Process memory dump data
-   * This can be called from the debug adapter or other sources
-   */
-  public processMemoryDump(memoryData: any) {
-    return this.stateCollector.analyzeMemoryDump(memoryData);
+  public getSnapshots(): StateSnapshot[] {
+    return this.stateCollector.getSnapshots();
   }
 
   /**
@@ -459,7 +454,6 @@ export class StateProcessorService implements vscode.Disposable {
 
   /**
    * Inject test data for development and testing
-   * This should only be used during development or when other methods fail
    */
   private injectTestData() {
     vscode.window.showInformationMessage(
@@ -501,7 +495,7 @@ export class StateProcessorService implements vscode.Disposable {
       ],
     };
 
-    // Add some fake variable names to make the test data more realistic
+    // Process the test data
     this.stateCollector.processTraceData(testTraceData);
 
     // Simulate a second transaction
@@ -527,6 +521,9 @@ export class StateProcessorService implements vscode.Disposable {
     };
 
     this.stateCollector.processTraceData(secondTraceData);
+
+    // Notify UI about the state update
+    this.notifyStateUpdate();
   }
 
   /**
@@ -538,8 +535,32 @@ export class StateProcessorService implements vscode.Disposable {
 }
 
 /**
- * Service for analyzing gas consumption in smart contracts
+ * Initializes all services for the extension
  */
+export function initializeServices(context: vscode.ExtensionContext) {
+  console.log("Initializing services...");
+
+  // Initialize state processor service
+  const stateProcessorService = new StateProcessorService(context);
+  context.subscriptions.push(stateProcessorService);
+
+  // Initialize other services
+  const gasAnalyzerService = new GasAnalyzerService();
+  context.subscriptions.push(gasAnalyzerService);
+
+  const educationalContentService = new EducationalContentService();
+  context.subscriptions.push(educationalContentService);
+
+  return {
+    stateProcessorService,
+    gasAnalyzerService,
+    educationalContentService,
+  };
+}
+
+// Other service classes remain the same as in your original code
+// GasAnalyzerService and EducationalContentService
+
 export class GasAnalyzerService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
 
@@ -559,9 +580,6 @@ export class GasAnalyzerService implements vscode.Disposable {
     this.disposables.push(analyzeGasCommand);
   }
 
-  /**
-   * Analyzes gas usage in the current smart contract
-   */
   public analyzeGasUsage() {
     vscode.window.showInformationMessage("Analyzing gas usage...");
     // Implementation for gas analysis would go here
@@ -572,9 +590,6 @@ export class GasAnalyzerService implements vscode.Disposable {
   }
 }
 
-/**
- * Service for providing educational content about smart contracts
- */
 export class EducationalContentService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
 
@@ -594,9 +609,6 @@ export class EducationalContentService implements vscode.Disposable {
     this.disposables.push(showTutorialCommand);
   }
 
-  /**
-   * Shows a tutorial about smart contract development
-   */
   public showTutorial() {
     vscode.window.showInformationMessage("Opening smart contract tutorial...");
     // Implementation for showing tutorials would go here
@@ -605,24 +617,6 @@ export class EducationalContentService implements vscode.Disposable {
   public dispose() {
     this.disposables.forEach((d) => d.dispose());
   }
-}
-
-/**
- * Initializes all services for the extension
- */
-export function initializeServices(context: vscode.ExtensionContext) {
-  console.log("Initializing services...");
-  // Initialize state processor service
-  const stateProcessorService = new StateProcessorService(context);
-  context.subscriptions.push(stateProcessorService);
-
-  // Initialize gas analyzer service
-  const gasAnalyzerService = new GasAnalyzerService();
-  context.subscriptions.push(gasAnalyzerService);
-
-  // Initialize educational content service
-  const educationalContentService = new EducationalContentService();
-  context.subscriptions.push(educationalContentService);
 }
 
 // This method is called when your extension is deactivated
