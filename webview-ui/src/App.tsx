@@ -11,20 +11,35 @@ import {
   VSCodeProgressRing,
 } from "@vscode/webview-ui-toolkit/react";
 import ContractStateVisualizer from "./components/ContractStateVisualiser";
-import type { StateChange } from "./types";
+import ContractSimulator from "./components/ContractSimulator";
+import StorageLayout from "./components/StorageLayout";
+import type {
+  StateChange,
+  ContractFunction,
+  ContractState,
+  StorageVariable,
+} from "./types";
 
 const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [stateChanges, setStateChanges] = useState<StateChange[]>([]);
-  const [, setActiveTab] = useState<string>("state");
+  const [contractFunctions, setContractFunctions] = useState<
+    ContractFunction[]
+  >([]);
+  const [contractState, setContractState] = useState<ContractState>({});
+  const [storageVariables, setStorageVariables] = useState<StorageVariable[]>(
+    []
+  );
+  const [activeTab, setActiveTab] = useState<string>("state");
+  const [contractName, setContractName] = useState<string>("");
 
   useEffect(() => {
     // Set up message listener
     window.addEventListener("message", handleMessage);
 
-    // Request initial state changes when component mounts
-    vscode && vscode.postMessage({
-      command: "getStateChanges",
+    // Request initial state when component mounts
+    vscode.postMessage({
+      command: "getContractInfo",
     });
 
     return () => {
@@ -44,13 +59,30 @@ const App: React.FC = () => {
       case "contractAnalyzed":
         // Handle when a new contract is analyzed
         setLoading(false);
+        setContractName(message.contractName || "Unknown Contract");
+        setContractFunctions(message.contractFunctions || []);
+        setStorageVariables(message.storageVariables || []);
         setStateChanges(message.stateChanges || []);
+        break;
+
+      case "updateContractState":
+        // Update the current contract state
+        setContractState(message.contractState || {});
+        break;
+
+      case "functionExecuted":
+        // Handle when a function is executed in the simulator
+        if (message.stateChanges) {
+          setStateChanges((prev) => [...prev, ...message.stateChanges]);
+        }
+        if (message.newState) {
+          setContractState(message.newState);
+        }
         break;
     }
   };
 
   const requestAnalysis = () => {
-    if(!vscode) return;
     setLoading(true);
     vscode.postMessage({
       command: "analyzeContract",
@@ -60,44 +92,70 @@ const App: React.FC = () => {
   return (
     <div className="container">
       <header>
-        <h1>Solidity State Visualizer</h1>
+        <div className="header-title">
+          <h1>Solidity State Visualizer</h1>
+          {contractName && <div className="contract-name">State Visualisation for {contractName}.sol</div>}
+        </div>
+        
         <VSCodeButton onClick={requestAnalysis}>
-          Analyze Current Contract
+          {loading ? "Analyzing..." : "Analyze Current Contract"}
         </VSCodeButton>
       </header>
 
-      <VSCodePanels>
-        <VSCodePanelTab id="state" onClick={() => setActiveTab("state")}>
-          State Changes
-        </VSCodePanelTab>
-        <VSCodePanelTab
-          id="variables"
-          onClick={() => setActiveTab("variables")}
-        >
-          Variables
-        </VSCodePanelTab>
-        <VSCodePanelTab id="storage" onClick={() => setActiveTab("storage")}>
-          Storage Layout
-        </VSCodePanelTab>
+      <VSCodePanels
+        activeid={activeTab}
+        onChange={(e: any) => setActiveTab(e.detail.tab)}
+      >
+        <VSCodePanelTab id="state">State Changes</VSCodePanelTab>
+        <VSCodePanelTab id="simulator">Contract Simulator</VSCodePanelTab>
+        <VSCodePanelTab id="storage">Storage Layout</VSCodePanelTab>
 
-        <VSCodePanelView id="state-view">
+        <VSCodePanelView id="state">
           {loading ? (
             <div className="loading-container">
               <VSCodeProgressRing />
               <p>Loading contract state...</p>
             </div>
-          ) : stateChanges.length > 0 ? (
-            <ContractStateVisualizer stateChanges={stateChanges} />
+          ) : (
+            <ContractStateVisualizer
+              stateChanges={stateChanges}
+              contractState={contractState}
+            />
+          )}
+        </VSCodePanelView>
+
+        <VSCodePanelView id="simulator">
+          {loading ? (
+            <div className="loading-container">
+              <VSCodeProgressRing />
+              <p>Loading contract functions...</p>
+            </div>
+          ) : contractFunctions.length > 0 ? (
+            <ContractSimulator
+              contractFunctions={contractFunctions}
+              currentState={contractState}
+            />
           ) : (
             <div className="empty-state">
               <p>
-                No state changes detected. Analyze a contract to visualize its
-                state.
+                No contract functions available. Analyze a contract to use the
+                simulator.
               </p>
               <VSCodeButton onClick={requestAnalysis}>
                 Analyze Contract
               </VSCodeButton>
             </div>
+          )}
+        </VSCodePanelView>
+
+        <VSCodePanelView id="storage">
+          {loading ? (
+            <div className="loading-container">
+              <VSCodeProgressRing />
+              <p>Loading storage layout...</p>
+            </div>
+          ) : (
+            <StorageLayout variables={storageVariables} />
           )}
         </VSCodePanelView>
       </VSCodePanels>

@@ -7,6 +7,7 @@ import {
   StateCollector,
   type StateSnapshot,
 } from "./core/stateProcessor/stateCollector";
+import { ContractSimulator } from "./core/stateProcessor/contractSimulator";
 
 // Global reference to the state processor service
 let stateProcessorService: StateProcessorService | undefined;
@@ -54,6 +55,7 @@ export function activate(context: vscode.ExtensionContext) {
 export class StateProcessorService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = [];
   private stateCollector: StateCollector;
+  private contractSimulator: ContractSimulator;
   private currentSnapshotId = -1;
 
   // Event emitters for UI updates
@@ -63,10 +65,19 @@ export class StateProcessorService implements vscode.Disposable {
     currentStep: number;
   }>();
 
+  // New event emitter for contract analysis
+  private contractAnalyzedEmitter = new vscode.EventEmitter<{
+    contractName: string;
+    abi: any[];
+    storageLayout: any;
+  }>();
+
   public readonly onStateUpdated = this.stateUpdateEmitter.event;
+  public readonly onContractAnalyzed = this.contractAnalyzedEmitter.event;
 
   constructor(context: vscode.ExtensionContext) {
     this.stateCollector = new StateCollector(context);
+    this.contractSimulator = new ContractSimulator(this.stateCollector);
     this.registerEventListeners();
     this.registerCommands();
     console.log("StateProcessorService initialized");
@@ -77,9 +88,20 @@ export class StateProcessorService implements vscode.Disposable {
    */
   private registerEventListeners() {
     this.disposables.push(
-      this.stateCollector.onSnapshotCreated((snapshot: any) => {
+      this.stateCollector.onSnapshotCreated((snapshot) => {
         this.currentSnapshotId = snapshot.id;
         this.notifyStateUpdate();
+      })
+    );
+
+    // Listen for contract analysis events from the state collector
+    this.disposables.push(
+      this.stateCollector.onContractAnalyzed((contractInfo) => {
+        // When a contract is analyzed, set up the simulator with the ABI
+        this.contractSimulator.setContractAbi(contractInfo.abi);
+
+        // Forward the event to UI components
+        this.contractAnalyzedEmitter.fire(contractInfo);
       })
     );
   }
@@ -152,6 +174,14 @@ export class StateProcessorService implements vscode.Disposable {
       }
     );
 
+    // New command to simulate a contract function
+    const simulateFunctionCommand = vscode.commands.registerCommand(
+      "solidityDebugger.simulateContractFunction",
+      (functionName: string, inputs: any[]) => {
+        return this.simulateContractFunction(functionName, inputs);
+      }
+    );
+
     this.disposables.push(
       analyzeStateCommand,
       prevStateCommand,
@@ -160,7 +190,8 @@ export class StateProcessorService implements vscode.Disposable {
       resetStateCommand,
       analyzeDeployedCommand,
       analyzeTransactionCommand,
-      injectTestDataCommand
+      injectTestDataCommand,
+      simulateFunctionCommand
     );
   }
 
@@ -307,10 +338,53 @@ export class StateProcessorService implements vscode.Disposable {
   }
 
   /**
+   * Simulate execution of a contract function
+   */
+  public simulateContractFunction(
+    functionName: string,
+    inputs: any[],
+    currentState?: Record<string, any>
+  ) {
+    // If no current state is provided, use the built state
+    const state = currentState || this.buildCurrentState();
+
+    // Use the contract simulator to simulate the function execution
+    return this.contractSimulator.simulateFunction(functionName, inputs, state);
+  }
+
+  /**
    * Get the current available contract state snapshots
    */
   public getSnapshots(): StateSnapshot[] {
     return this.stateCollector.getSnapshots();
+  }
+
+  /**
+   * Get the current contract ABI
+   */
+  public getCurrentContractAbi(): any[] {
+    return this.stateCollector.getCurrentContractAbi();
+  }
+
+  /**
+   * Get the current contract name
+   */
+  public getCurrentContractName(): string {
+    return this.stateCollector.getCurrentContractName();
+  }
+
+  /**
+   * Get the storage layout variables
+   */
+  public getStorageVariables(): any[] {
+    return this.stateCollector.getStorageVariables();
+  }
+
+  /**
+   * Get the current contract state
+   */
+  public getCurrentState(): Record<string, any> {
+    return this.stateCollector.getCurrentState();
   }
 
   /**
@@ -522,8 +596,51 @@ export class StateProcessorService implements vscode.Disposable {
 
     this.stateCollector.processTraceData(secondTraceData);
 
+    // Set up mock ABI for the simulator
+    const mockAbi = [
+      {
+        type: "function",
+        name: "transfer",
+        inputs: [
+          { name: "to", type: "address" },
+          { name: "amount", type: "uint256" },
+        ],
+        outputs: [{ name: "", type: "bool" }],
+        stateMutability: "nonpayable",
+      },
+      {
+        type: "function",
+        name: "balanceOf",
+        inputs: [{ name: "account", type: "address" }],
+        outputs: [{ name: "", type: "uint256" }],
+        stateMutability: "view",
+      },
+      {
+        type: "function",
+        name: "mint",
+        inputs: [{ name: "amount", type: "uint256" }],
+        outputs: [],
+        stateMutability: "nonpayable",
+      },
+    ];
+
+    this.contractSimulator.setContractAbi(mockAbi);
+
     // Notify UI about the state update
     this.notifyStateUpdate();
+
+    // Fire contract analyzed event with mock data
+    this.contractAnalyzedEmitter.fire({
+      contractName: "MockToken",
+      abi: mockAbi,
+      storageLayout: {
+        storage: [
+          { slot: "0", label: "totalSupply", type: "uint256", offset: 0 },
+          { slot: "1", label: "initialized", type: "bool", offset: 0 },
+          { slot: "2", label: "decimals", type: "uint8", offset: 0 },
+        ],
+      },
+    });
   }
 
   /**

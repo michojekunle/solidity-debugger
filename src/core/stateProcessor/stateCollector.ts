@@ -1,33 +1,32 @@
-import * as vscode from "vscode";
-import * as ethers from "ethers";
-import * as solc from "solc";
-// import * as fs from 'fs';
-import * as path from "path";
+import * as vscode from "vscode"
+import * as ethers from "ethers"
+import * as solc from "solc"
+import * as path from "path"
 
 /**
  * Represents a change in the smart contract state
  */
 export interface StateChange {
-  slot: string; // Storage slot that changed
-  oldValue: string; // Previous value (hex string)
-  newValue: string; // New value (hex string)
-  variableName?: string; // If available, the variable name associated with this slot
-  typeInfo?: string; // Type information for the value (uint256, address, etc.)
-  operation: string; // Operation that caused this change (SSTORE, etc.)
-  pc: number; // Program counter at time of change
-  depth: number; // Call depth
-  transaction?: string; // Transaction hash if available
+  slot: string // Storage slot that changed
+  oldValue: string // Previous value (hex string)
+  newValue: string // New value (hex string)
+  variableName?: string // If available, the variable name associated with this slot
+  typeInfo?: string // Type information for the value (uint256, address, etc.)
+  operation: string // Operation that caused this change (SSTORE, etc.)
+  pc: number // Program counter at time of change
+  depth: number // Call depth
+  transaction?: string // Transaction hash if available
 }
 
 /**
  * Represents a snapshot of state changes in a specific transaction/call
  */
 export interface StateSnapshot {
-  id: number; // Sequential ID of this snapshot
-  timestamp: number; // When this snapshot was created
-  changes: StateChange[]; // State changes in this snapshot
-  hash?: string; // Transaction hash if available
-  contextInfo?: any; // Additional context about this snapshot
+  id: number // Sequential ID of this snapshot
+  timestamp: number // When this snapshot was created
+  changes: StateChange[] // State changes in this snapshot
+  hash?: string // Transaction hash if available
+  contextInfo?: any // Additional context about this snapshot
 }
 
 /**
@@ -51,30 +50,36 @@ const TYPE_MAPPING: Record<string, string> = {
   string: "Text String",
   bytes: "Byte Array",
   bytes32: "Fixed Bytes (32)",
-};
+}
 
 /**
  * Service for collecting and analyzing smart contract state changes
  */
 export class StateCollector implements vscode.Disposable {
-  private snapshots: StateSnapshot[] = [];
-  private slotToVariableMap: Map<string, { name: string; type: string }> =
-    new Map();
-  private currentContractAbi: any[] = [];
-  private storageLayout: any = null;
-  private provider: ethers.providers.JsonRpcProvider | null = null;
+  private snapshots: StateSnapshot[] = []
+  private slotToVariableMap: Map<string, { name: string; type: string }> = new Map()
+  private currentContractAbi: any[] = []
+  private currentContractName = ""
+  private storageLayout: any = null
+  private provider: ethers.providers.JsonRpcProvider | null = null
 
   // Event emitters
-  private snapshotCreatedEmitter = new vscode.EventEmitter<StateSnapshot>();
+  private snapshotCreatedEmitter = new vscode.EventEmitter<StateSnapshot>()
+  private contractAnalyzedEmitter = new vscode.EventEmitter<{
+    contractName: string
+    abi: any[]
+    storageLayout: any
+  }>()
 
-  public readonly onSnapshotCreated = this.snapshotCreatedEmitter.event;
+  public readonly onSnapshotCreated = this.snapshotCreatedEmitter.event
+  public readonly onContractAnalyzed = this.contractAnalyzedEmitter.event
 
   constructor(private context: vscode.ExtensionContext) {
     // Try to connect to a local Ethereum node
-    this.initializeProvider();
+    this.initializeProvider()
 
     // Set up Solidity compilation environment
-    this.setupCompilationEnvironment();
+    this.setupCompilationEnvironment()
   }
 
   /**
@@ -87,33 +92,33 @@ export class StateCollector implements vscode.Disposable {
         "http://localhost:8545", // Ganache, Hardhat
         "http://localhost:7545", // Ganache UI default
         "http://127.0.0.1:8545", // Alternative localhost
-      ];
+      ]
 
       for (const endpoint of endpoints) {
         try {
-          const provider = new ethers.providers.JsonRpcProvider(endpoint);
+          const provider = new ethers.providers.JsonRpcProvider(endpoint)
           // Test the connection
           provider
             .getBlockNumber()
             .then(() => {
-              this.provider = provider;
-              console.log(`Connected to Ethereum node at ${endpoint}`);
+              this.provider = provider
+              console.log(`Connected to Ethereum node at ${endpoint}`)
             })
             .catch(() => {
               // Connection failed, try next endpoint
-            });
+            })
 
-          if (this.provider) break;
+          if (this.provider) break
         } catch (error) {
           // Try next endpoint
         }
       }
 
       if (!this.provider) {
-        console.log("Could not connect to any local Ethereum node");
+        console.log("Could not connect to any local Ethereum node")
       }
     } catch (error) {
-      console.error("Error initializing Ethereum provider:", error);
+      console.error("Error initializing Ethereum provider:", error)
     }
   }
 
@@ -123,15 +128,15 @@ export class StateCollector implements vscode.Disposable {
   private setupCompilationEnvironment() {
     // This method would normally set up the proper solc-js environment
     // For VSCode extensions, you might need to bundle solc or use solc installed by the user
-    console.log("Solidity compilation environment initialized");
+    console.log("Solidity compilation environment initialized")
   }
 
   /**
    * Clear all collected state
    */
   public clearState() {
-    this.snapshots = [];
-    this.slotToVariableMap.clear();
+    this.snapshots = []
+    this.slotToVariableMap.clear()
   }
 
   /**
@@ -139,7 +144,7 @@ export class StateCollector implements vscode.Disposable {
    */
   public processTraceData(traceData: any): StateSnapshot {
     // Create a new snapshot for this transaction
-    const snapshotId = this.snapshots.length;
+    const snapshotId = this.snapshots.length
     const snapshot: StateSnapshot = {
       id: snapshotId,
       timestamp: Date.now(),
@@ -150,20 +155,20 @@ export class StateCollector implements vscode.Disposable {
         from: traceData.from || "unknown",
         value: traceData.value || "0x0",
       },
-    };
+    }
 
     // Track the slot values for this transaction
-    const slotValues: Map<string, string> = new Map();
+    const slotValues: Map<string, string> = new Map()
 
     // Process each log entry in the trace
     for (const log of traceData.structLogs) {
       // We're mainly interested in SSTORE operations which change state
       if (log.op === "SSTORE") {
-        const slot = log.stack[log.stack.length - 2]; // Second to last item on stack is the slot
-        const value = log.stack[log.stack.length - 1]; // Last item on stack is the value
+        const slot = log.stack[log.stack.length - 2] // Second to last item on stack is the slot
+        const value = log.stack[log.stack.length - 1] // Last item on stack is the value
 
         // Get the previous value for this slot
-        const oldValue = slotValues.get(slot) || "0x0";
+        const oldValue = slotValues.get(slot) || "0x0"
 
         // Only record if the value changed
         if (oldValue !== value) {
@@ -174,86 +179,168 @@ export class StateCollector implements vscode.Disposable {
             operation: log.op,
             pc: log.pc,
             depth: log.depth,
-          };
+          }
 
           // If we have mapping information for this slot, add it
-          const varInfo = this.slotToVariableMap.get(slot);
+          const varInfo = this.slotToVariableMap.get(slot)
           if (varInfo) {
-            change.variableName = varInfo.name;
-            change.typeInfo = varInfo.type;
+            change.variableName = varInfo.name
+            change.typeInfo = varInfo.type
           } else {
             // Try to infer the type based on the value
-            change.typeInfo = this.inferType(value);
+            change.typeInfo = this.inferType(value)
           }
 
           // Add the change to the snapshot
-          snapshot.changes.push(change);
+          snapshot.changes.push(change)
 
           // Update our tracking of the current value
-          slotValues.set(slot, value);
+          slotValues.set(slot, value)
         }
       }
     }
 
     // Add the snapshot to our collection
-    this.snapshots.push(snapshot);
+    this.snapshots.push(snapshot)
 
     // Notify listeners about the new snapshot
-    this.snapshotCreatedEmitter.fire(snapshot);
+    this.snapshotCreatedEmitter.fire(snapshot)
 
-    return snapshot;
+    return snapshot
+  }
+
+  /**
+   * Add a simulated snapshot (from the contract simulator)
+   */
+  public addSimulatedSnapshot(snapshot: StateSnapshot): void {
+    // Ensure the snapshot has a unique ID
+    snapshot.id = this.snapshots.length
+
+    // Add the snapshot to our collection
+    this.snapshots.push(snapshot)
+
+    // Notify listeners about the new snapshot
+    this.snapshotCreatedEmitter.fire(snapshot)
   }
 
   /**
    * Process an active editor to analyze storage layout of contract
    */
   public async analyzeActiveContract() {
-    const editor = vscode.window.activeTextEditor;
+    const editor = vscode.window.activeTextEditor
     if (!editor || editor.document.languageId !== "solidity") {
-      vscode.window.showWarningMessage("No Solidity file is currently active");
-      return false;
+      vscode.window.showWarningMessage("No Solidity file is currently active")
+      return false
     }
 
     try {
       // Get the file content
-      const content = editor.document.getText();
-      const filePath = editor.document.uri.fsPath;
+      const content = editor.document.getText()
+      const filePath = editor.document.uri.fsPath
 
       // Compile the contract to get storage layout
-      const compilationResult = await this.compileSolidityContract(
-        content,
-        filePath
-      );
+      const compilationResult = await this.compileSolidityContract(content, filePath)
+      console.log("Compilation result:", compilationResult)
       if (!compilationResult) {
-        vscode.window.showErrorMessage("Failed to compile contract");
-        return false;
+        vscode.window.showErrorMessage("Failed to compile contract")
+        return false
       }
 
       // Process the compilation output
-      this.processCompilationOutput(compilationResult);
-      return true;
+      this.processCompilationOutput(compilationResult)
+
+      // Create an initial state snapshot for the contract
+      this.createInitialStateSnapshot()
+
+      // Notify listeners about the contract analysis
+      this.contractAnalyzedEmitter.fire({
+        contractName: this.currentContractName,
+        abi: this.currentContractAbi,
+        storageLayout: this.storageLayout,
+      })
+
+      return true
     } catch (error) {
-      console.error("Error analyzing contract:", error);
+      console.error("Error analyzing contract:", error)
       vscode.window.showErrorMessage(
-        `Error analyzing contract: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      return false;
+        `Error analyzing contract: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return false
+    }
+  }
+
+  /**
+   * Create an initial state snapshot for the contract
+   * This represents the contract's state after deployment
+   */
+  private createInitialStateSnapshot() {
+    // Create a new snapshot for the initial state
+    const snapshotId = this.snapshots.length
+    const snapshot: StateSnapshot = {
+      id: snapshotId,
+      timestamp: Date.now(),
+      changes: [],
+      contextInfo: {
+        type: "initial_state",
+        contractName: this.currentContractName,
+      },
+    }
+
+    // Add default values for all storage variables
+    if (this.storageLayout && this.storageLayout.storage) {
+      for (const item of this.storageLayout.storage) {
+        const slot = "0x" + Number.parseInt(item.slot).toString(16)
+        const defaultValue = this.getDefaultValueForType(item.type)
+
+        const change: StateChange = {
+          slot,
+          oldValue: "0x0",
+          newValue: defaultValue,
+          variableName: item.label,
+          typeInfo: this.mapTypeToFriendlyName(item.type),
+          operation: "INITIAL",
+          pc: 0,
+          depth: 0,
+        }
+
+        snapshot.changes.push(change)
+      }
+    }
+
+    // Add the snapshot to our collection if it has changes
+    if (snapshot.changes.length > 0) {
+      this.snapshots.push(snapshot)
+      this.snapshotCreatedEmitter.fire(snapshot)
+    }
+  }
+
+  /**
+   * Get a default value for a Solidity type
+   */
+  private getDefaultValueForType(type: string): string {
+    if (type.startsWith("uint") || type.startsWith("int")) {
+      return "0x0"
+    } else if (type === "bool") {
+      return "0x0" // false
+    } else if (type === "address") {
+      return "0x0000000000000000000000000000000000000000"
+    } else if (type.startsWith("bytes")) {
+      return "0x0"
+    } else if (type === "string") {
+      return "0x0"
+    } else {
+      return "0x0"
     }
   }
 
   /**
    * Compile a Solidity contract and return the result
    */
-  private async compileSolidityContract(
-    source: string,
-    filePath: string
-  ): Promise<any> {
+  private async compileSolidityContract(source: string, filePath: string): Promise<any> {
     return new Promise((resolve, reject) => {
       try {
         // Prepare input for solc
-        const fileName = path.basename(filePath);
+        const fileName = path.basename(filePath)
         const input = {
           language: "Solidity",
           sources: {
@@ -268,65 +355,95 @@ export class StateCollector implements vscode.Disposable {
               },
             },
           },
-        };
+        }
 
         // Compile
-        const output = JSON.parse(solc.compile(JSON.stringify(input)));
+        const output = JSON.parse(solc.compile(JSON.stringify(input)))
 
         // Check for errors
         if (output.errors) {
-          const hasError = output.errors.some(
-            (error: any) => error.severity === "error"
-          );
+          const hasError = output.errors.some((error: any) => error.severity === "error")
           if (hasError) {
-            reject(
-              new Error("Compilation failed: " + JSON.stringify(output.errors))
-            );
-            return;
+            reject(new Error("Compilation failed: " + JSON.stringify(output.errors)))
+            return
           }
         }
 
-        resolve(output);
+        resolve(output)
       } catch (error) {
-        reject(error);
+        reject(error)
       }
-    });
+    })
   }
 
   /**
    * Process the output from the Solidity compiler
    */
   private processCompilationOutput(output: any) {
+    console.log("Processing compilation output:", output)
     // Find the compiled contract
-    const fileName = Object.keys(output.contracts)[0];
-    const contractName = Object.keys(output.contracts[fileName])[0];
-    const contract = output.contracts[fileName][contractName];
+    const fileName = Object.keys(output.contracts)[0]
+    const contractName = Object.keys(output.contracts[fileName])[0]
+    const contract = output.contracts[fileName][contractName]
+
+    // Save contract name
+    this.currentContractName = contractName
 
     // Save ABI for later use
-    this.currentContractAbi = contract.abi;
+    this.currentContractAbi = contract.abi
 
     // Process the storage layout
-    this.storageLayout = contract.storageLayout;
+    this.storageLayout = contract.storageLayout
 
     // Map storage slots to variable names
     if (this.storageLayout && this.storageLayout.storage) {
-      this.slotToVariableMap.clear();
+      this.slotToVariableMap.clear()
 
       for (const item of this.storageLayout.storage) {
-        const slot = "0x" + parseInt(item.slot).toString(16);
+        const slot = "0x" + Number.parseInt(item.slot).toString(16)
         this.slotToVariableMap.set(slot, {
           name: item.label,
           type: this.mapTypeToFriendlyName(item.type),
-        });
+        })
       }
     }
+  }
+
+  /**
+   * Get the current contract ABI
+   */
+  public getCurrentContractAbi(): any[] {
+    return this.currentContractAbi
+  }
+
+  /**
+   * Get the current contract name
+   */
+  public getCurrentContractName(): string {
+    return this.currentContractName
+  }
+
+  /**
+   * Get the storage layout variables
+   */
+  public getStorageVariables(): any[] {
+    if (!this.storageLayout || !this.storageLayout.storage) {
+      return []
+    }
+
+    return this.storageLayout.storage.map((item: any) => ({
+      slot: "0x" + Number.parseInt(item.slot).toString(16),
+      name: item.label,
+      type: this.mapTypeToFriendlyName(item.type),
+      offset: item.offset || 0,
+    }))
   }
 
   /**
    * Map a Solidity type to a more user-friendly description
    */
   private mapTypeToFriendlyName(solidityType: string): string {
-    return TYPE_MAPPING[solidityType] || solidityType;
+    return TYPE_MAPPING[solidityType] || solidityType
   }
 
   /**
@@ -334,32 +451,107 @@ export class StateCollector implements vscode.Disposable {
    */
   private inferType(value: string): string {
     // Remove 0x prefix if present
-    const cleanValue = value.startsWith("0x") ? value.slice(2) : value;
+    const cleanValue = value.startsWith("0x") ? value.slice(2) : value
 
     // Check if it's a small number (likely a bool or small uint)
     if (cleanValue === "0" || cleanValue === "1") {
-      return "Boolean or Number";
+      return "Boolean or Number"
     }
 
     // Check if it looks like an address (20 bytes)
     if (cleanValue.length === 40) {
-      return "Likely Address";
+      return "Likely Address"
     }
 
     // Check if it's a small number
     if (cleanValue.length <= 4) {
-      return "Small Number";
+      return "Small Number"
     }
 
     // Default assumption for larger values
-    return "Number or Bytes";
+    return "Number or Bytes"
   }
 
   /**
    * Get the current available contract state snapshots
    */
   public getSnapshots(): StateSnapshot[] {
-    return [...this.snapshots];
+    return [...this.snapshots]
+  }
+
+  /**
+   * Get the current contract state based on all snapshots
+   */
+  public getCurrentState(): Record<string, any> {
+    const state: Record<string, any> = {}
+
+    // Process all snapshots to build the current state
+    for (const snapshot of this.snapshots) {
+      for (const change of snapshot.changes) {
+        const key = change.variableName || `slot_${change.slot}`
+
+        // Create a friendly representation of the value
+        const friendlyValue = this.formatValueForDisplay(change.newValue, change.typeInfo)
+
+        state[key] = {
+          type: change.typeInfo || "unknown",
+          value: change.newValue,
+          displayValue: friendlyValue,
+          previousValue: change.oldValue,
+          lastChanged: snapshot.id,
+          slot: change.slot,
+          operation: change.operation,
+        }
+      }
+    }
+
+    return state
+  }
+
+  /**
+   * Format a value for display based on its type
+   */
+  private formatValueForDisplay(value: string, typeInfo?: string): string {
+    if (!value) return "null"
+
+    // Remove 0x prefix for processing
+    const rawValue = value.startsWith("0x") ? value.slice(2) : value
+
+    // Convert based on inferred/known type
+    if (typeInfo) {
+      if (typeInfo.includes("Boolean")) {
+        // For boolean values
+        return rawValue === "0" ? "false" : "true"
+      }
+
+      if (typeInfo.includes("Address")) {
+        // For Ethereum addresses - keep 0x prefix
+        return value.toLowerCase()
+      }
+
+      if (typeInfo.includes("Number")) {
+        // For number types, convert to decimal
+        try {
+          // Convert hex to decimal
+          const decimal = BigInt(`0x${rawValue}`).toString(10)
+          return decimal
+        } catch (e) {
+          return value // Return original if conversion fails
+        }
+      }
+    }
+
+    // For unknown types with common patterns
+    if (rawValue === "0") return "0"
+    if (rawValue === "1") return "1"
+
+    // If it looks like an address (20 bytes)
+    if (rawValue.length === 40) {
+      return `0x${rawValue.toLowerCase()}`
+    }
+
+    // Default case: return the original value
+    return value
   }
 
   /**
@@ -367,20 +559,20 @@ export class StateCollector implements vscode.Disposable {
    */
   public async analyzeDeployedContract(contractAddress: string) {
     if (!this.provider) {
-      vscode.window.showErrorMessage("No Ethereum provider available");
-      return false;
+      vscode.window.showErrorMessage("No Ethereum provider available")
+      return false
     }
 
     try {
       // Check if the address exists
-      const code = await this.provider.getCode(contractAddress);
+      const code = await this.provider.getCode(contractAddress)
       if (code === "0x") {
-        vscode.window.showErrorMessage("No contract deployed at this address");
-        return false;
+        vscode.window.showErrorMessage("No contract deployed at this address")
+        return false
       }
 
       // Create a new snapshot for this analysis
-      const snapshotId = this.snapshots.length;
+      const snapshotId = this.snapshots.length
       const snapshot: StateSnapshot = {
         id: snapshotId,
         timestamp: Date.now(),
@@ -389,18 +581,15 @@ export class StateCollector implements vscode.Disposable {
           type: "static_analysis",
           address: contractAddress,
         },
-      };
+      }
 
       // Get storage values for the first few slots
       for (let i = 0; i < 10; i++) {
-        const slot = "0x" + i.toString(16);
-        const value = await this.provider.getStorageAt(contractAddress, slot);
+        const slot = "0x" + i.toString(16)
+        const value = await this.provider.getStorageAt(contractAddress, slot)
 
         // Only include non-zero values
-        if (
-          value !==
-          "0x0000000000000000000000000000000000000000000000000000000000000000"
-        ) {
+        if (value !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
           const change: StateChange = {
             slot,
             oldValue: "0x0", // We don't know the previous value
@@ -408,41 +597,37 @@ export class StateCollector implements vscode.Disposable {
             operation: "ANALYSIS",
             pc: 0,
             depth: 0,
-          };
-
-          // If we have mapping information for this slot, add it
-          const varInfo = this.slotToVariableMap.get(slot);
-          if (varInfo) {
-            change.variableName = varInfo.name;
-            change.typeInfo = varInfo.type;
-          } else {
-            // Try to infer the type based on the value
-            change.typeInfo = this.inferType(value);
           }
 
-          snapshot.changes.push(change);
+          // If we have mapping information for this slot, add it
+          const varInfo = this.slotToVariableMap.get(slot)
+          if (varInfo) {
+            change.variableName = varInfo.name
+            change.typeInfo = varInfo.type
+          } else {
+            // Try to infer the type based on the value
+            change.typeInfo = this.inferType(value)
+          }
+
+          snapshot.changes.push(change)
         }
       }
 
       // Only add the snapshot if we found any state
       if (snapshot.changes.length > 0) {
-        this.snapshots.push(snapshot);
-        this.snapshotCreatedEmitter.fire(snapshot);
-        return true;
+        this.snapshots.push(snapshot)
+        this.snapshotCreatedEmitter.fire(snapshot)
+        return true
       } else {
-        vscode.window.showInformationMessage(
-          "No state found in the first 10 storage slots"
-        );
-        return false;
+        vscode.window.showInformationMessage("No state found in the first 10 storage slots")
+        return false
       }
     } catch (error) {
-      console.error("Error analyzing deployed contract:", error);
+      console.error("Error analyzing deployed contract:", error)
       vscode.window.showErrorMessage(
-        `Error analyzing deployed contract: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      return false;
+        `Error analyzing deployed contract: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return false
     }
   }
 
@@ -451,30 +636,27 @@ export class StateCollector implements vscode.Disposable {
    */
   public async analyzeTransaction(txHash: string) {
     if (!this.provider) {
-      vscode.window.showErrorMessage("No Ethereum provider available");
-      return false;
+      vscode.window.showErrorMessage("No Ethereum provider available")
+      return false
     }
 
     try {
       // First check if the transaction exists
-      const tx = await this.provider.getTransaction(txHash);
+      const tx = await this.provider.getTransaction(txHash)
       if (!tx) {
-        vscode.window.showErrorMessage("Transaction not found");
-        return false;
+        vscode.window.showErrorMessage("Transaction not found")
+        return false
       }
 
       // Request debug_traceTransaction from the provider
       // Note: This requires the node to support this method
-      const trace = await this.provider.send("debug_traceTransaction", [
-        txHash,
-        { tracer: "callTracer" },
-      ]);
+      const trace = await this.provider.send("debug_traceTransaction", [txHash, { tracer: "callTracer" }])
 
       if (!trace) {
         vscode.window.showErrorMessage(
-          "Could not retrieve transaction trace. Ensure your node supports debug_traceTransaction"
-        );
-        return false;
+          "Could not retrieve transaction trace. Ensure your node supports debug_traceTransaction",
+        )
+        return false
       }
 
       // Process the trace data
@@ -484,18 +666,16 @@ export class StateCollector implements vscode.Disposable {
         to: tx.to,
         value: tx.value.toHexString(),
         structLogs: this.convertTraceFormat(trace),
-      };
+      }
 
-      this.processTraceData(traceData);
-      return true;
+      this.processTraceData(traceData)
+      return true
     } catch (error) {
-      console.error("Error analyzing transaction:", error);
+      console.error("Error analyzing transaction:", error)
       vscode.window.showErrorMessage(
-        `Error analyzing transaction: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      return false;
+        `Error analyzing transaction: ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return false
     }
   }
 
@@ -505,14 +685,14 @@ export class StateCollector implements vscode.Disposable {
   private convertTraceFormat(trace: any): any[] {
     // This is a simplified conversion - actual implementation would depend on
     // the exact format returned by your specific Ethereum node
-    const structLogs: any[] = [];
+    const structLogs: any[] = []
 
     // Process the call tracer result
     if (trace.calls) {
-      this.processTraceCall(trace, structLogs);
+      this.processTraceCall(trace, structLogs)
     }
 
-    return structLogs;
+    return structLogs
   }
 
   /**
@@ -530,7 +710,7 @@ export class StateCollector implements vscode.Disposable {
             stack: op.stack || [],
             depth: depth,
             gas: op.gas || 0,
-          });
+          })
         }
       }
     }
@@ -538,522 +718,16 @@ export class StateCollector implements vscode.Disposable {
     // Process nested calls
     if (call.calls && Array.isArray(call.calls)) {
       for (const subcall of call.calls) {
-        this.processTraceCall(subcall, structLogs, depth + 1);
+        this.processTraceCall(subcall, structLogs, depth + 1)
       }
     }
-  }
-
-  /**
-   * Analyze memory dumps from debugging sessions
-   */
-  public analyzeMemoryDump(memoryData: any) {
-    try {
-      // Create a new snapshot for this memory dump
-      const snapshotId = this.snapshots.length;
-      const snapshot: StateSnapshot = {
-        id: snapshotId,
-        timestamp: Date.now(),
-        changes: [],
-        contextInfo: {
-          type: "memory_dump",
-        },
-      };
-
-      // Process the memory data
-      for (const [slot, value] of Object.entries(memoryData)) {
-        const change: StateChange = {
-          slot,
-          oldValue: "0x0", // We don't know the previous value
-          newValue: value as string,
-          operation: "MEMORY_DUMP",
-          pc: 0,
-          depth: 0,
-        };
-
-        // If we have mapping information for this slot, add it
-        const varInfo = this.slotToVariableMap.get(slot);
-        if (varInfo) {
-          change.variableName = varInfo.name;
-          change.typeInfo = varInfo.type;
-        } else {
-          // Try to infer the type based on the value
-          change.typeInfo = this.inferType(value as string);
-        }
-
-        snapshot.changes.push(change);
-      }
-
-      // Add the snapshot to our collection
-      this.snapshots.push(snapshot);
-
-      // Notify listeners about the new snapshot
-      this.snapshotCreatedEmitter.fire(snapshot);
-
-      return snapshot;
-    } catch (error) {
-      console.error("Error analyzing memory dump:", error);
-      vscode.window.showErrorMessage(
-        `Error analyzing memory dump: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Collect real-time state from a debug session
-   * This implementation integrates with the VSCode debug API to track contract state changes
-   */
-  public collectDebugState(
-    debugSession: vscode.DebugSession
-  ): vscode.Disposable {
-    console.log("Debug session state collection started", debugSession);
-
-    // Create a composite disposable to store all event subscriptions
-    const disposables: vscode.Disposable[] = [];
-
-    // Track the current snapshot being built
-    let currentSnapshot: StateSnapshot | null = null;
-    let lastKnownState: Map<string, string> = new Map();
-
-    // Helper function to create a new snapshot
-    const createNewSnapshot = () => {
-      const snapshotId = this.snapshots.length;
-      currentSnapshot = {
-        id: snapshotId,
-        timestamp: Date.now(),
-        changes: [],
-        contextInfo: {
-          type: "debug_session",
-          debugSessionId: debugSession.id,
-          debugSessionName: debugSession.name,
-        },
-      };
-    };
-
-    // Helper function to finalize and save a snapshot
-    const finalizeSnapshot = () => {
-      if (currentSnapshot && currentSnapshot.changes.length > 0) {
-        this.snapshots.push(currentSnapshot);
-        this.snapshotCreatedEmitter.fire(currentSnapshot);
-        currentSnapshot = null;
-      }
-    };
-
-    // Helper function to compare and record state changes
-    const recordStateChanges = async (frameId: number) => {
-      try {
-        // Only create a snapshot if we're actually going to add changes
-        if (!currentSnapshot) {
-          createNewSnapshot();
-        }
-
-        // Get contract storage state at this point
-        // We need to evaluate expressions to get storage values
-        const storageSlots = Array.from(this.slotToVariableMap.keys());
-
-        // Also include some standard slots if we don't have mapping info
-        if (storageSlots.length === 0) {
-          // Add the first 10 slots if we don't have specific mapping info
-          for (let i = 0; i < 10; i++) {
-            storageSlots.push("0x" + i.toString(16));
-          }
-        }
-
-        // Evaluate each storage slot
-        for (const slot of storageSlots) {
-          // We need to form a debug expression to evaluate the storage slot
-          // The exact expression depends on the debug adapter being used
-
-          // Different debug adapters might require different expressions
-          // Here we'll try a few common formats
-          const expressions = [
-            `debug.getStorageAt("${slot}")`, // Generic format
-            `ethereum.getStorageAt(address, ${slot})`, // Ethereum specific
-            `web3.eth.getStorageAt(contract.address, "${slot}")`, // Web3 format
-            `storage["${slot}"]`, // Direct storage access if available
-          ];
-
-          let valueFound = false;
-
-          for (const expr of expressions) {
-            try {
-              const response =
-                await vscode.debug.activeDebugSession?.customRequest(
-                  "evaluate",
-                  {
-                    expression: expr,
-                    frameId: frameId,
-                    context: "watch",
-                  }
-                );
-
-              if (response && response.result) {
-                // Found a value
-                const newValue = response.result.startsWith("0x")
-                  ? response.result
-                  : "0x" + response.result;
-
-                // Get the previous value
-                const oldValue = lastKnownState.get(slot) || "0x0";
-
-                // Only record if the value changed
-                if (oldValue !== newValue) {
-                  const change: StateChange = {
-                    slot,
-                    oldValue,
-                    newValue,
-                    operation: "DEBUG_STORAGE",
-                    pc: 0, // We might get this from debug info
-                    depth: 0, // We might get this from debug info
-                  };
-
-                  // If we have mapping information for this slot, add it
-                  const varInfo = this.slotToVariableMap.get(slot);
-                  if (varInfo) {
-                    change.variableName = varInfo.name;
-                    change.typeInfo = varInfo.type;
-                  } else {
-                    // Try to infer the type based on the value
-                    change.typeInfo = this.inferType(newValue);
-                  }
-
-                  // Update our tracking of the current value
-                  lastKnownState.set(slot, newValue);
-
-                  // Add the change to the snapshot
-                  if (currentSnapshot) {
-                    currentSnapshot.changes.push(change);
-                  }
-                }
-
-                valueFound = true;
-                break; // No need to try other expressions
-              }
-            } catch (error) {
-              // This expression format didn't work, try the next one
-              console.log(`Expression "${expr}" failed: ${error}`);
-            }
-          }
-
-          if (!valueFound) {
-            console.log(
-              `Could not evaluate storage slot ${slot} with any known expression format`
-            );
-          }
-        }
-
-        // Also try to get the program counter and other debug information
-        try {
-          const stackFrames =
-            await vscode.debug.activeDebugSession?.customRequest("stackTrace", {
-              threadId: 0, // Assuming the main thread is 0
-            });
-
-          if (
-            stackFrames &&
-            stackFrames.stackFrames &&
-            stackFrames.stackFrames.length > 0
-          ) {
-            // Get the top frame
-            const topFrame = stackFrames.stackFrames[0];
-
-            // Update PC and location info in our changes
-            if (currentSnapshot) {
-              for (const change of currentSnapshot.changes) {
-                change.pc = topFrame.instructionPointerReference || 0;
-
-                // Add additional context
-                if (!currentSnapshot.contextInfo) {
-                  currentSnapshot.contextInfo = {};
-                }
-
-                currentSnapshot.contextInfo.location = {
-                  source: topFrame.source?.name || "unknown",
-                  line: topFrame.line || 0,
-                  column: topFrame.column || 0,
-                };
-              }
-            }
-          }
-        } catch (error) {
-          console.log(`Could not get stack frame information: ${error}`);
-        }
-      } catch (error) {
-        console.error("Error recording state changes:", error);
-      }
-    };
-
-    // Register for stopped events (breakpoints, step operations, etc.)
-    disposables.push(
-      vscode.debug.onDidChangeBreakpoints(async (e) => {
-        // When breakpoints change, we might want to annotate them with storage info
-        // This is more of an enhancement than core functionality
-        console.log("Breakpoints changed:", e);
-      })
-    );
-
-    // Listen for debug sessions being started
-    disposables.push(
-      vscode.debug.onDidStartDebugSession((session) => {
-        if (session.id === debugSession.id) {
-          console.log(`Debug session ${session.id} started`);
-          // Clear our state tracking for a new session
-          lastKnownState.clear();
-        }
-      })
-    );
-
-    // Listen for debug sessions being terminated
-    disposables.push(
-      vscode.debug.onDidTerminateDebugSession((session) => {
-        if (session.id === debugSession.id) {
-          console.log(`Debug session ${session.id} terminated`);
-          // Finalize any pending snapshot
-          finalizeSnapshot();
-        }
-      })
-    );
-
-    // The main event - listen for when execution stops at a breakpoint or step
-    disposables.push(
-      vscode.debug.onDidReceiveDebugSessionCustomEvent(async (e) => {
-        if (e.session.id !== debugSession.id) {
-          return; // Not our debug session
-        }
-
-        // Handle various debug events
-        switch (e.event) {
-          case "stopped":
-            console.log("Execution stopped:", e.body);
-
-            // Get the current stack frame to evaluate expressions
-            try {
-              const stackTraceResponse = await e.session.customRequest(
-                "stackTrace",
-                {
-                  threadId: e.body.threadId,
-                }
-              );
-
-              if (
-                stackTraceResponse &&
-                stackTraceResponse.stackFrames &&
-                stackTraceResponse.stackFrames.length > 0
-              ) {
-                const frameId = stackTraceResponse.stackFrames[0].id;
-
-                // Record state changes at this point
-                await recordStateChanges(frameId);
-              }
-            } catch (error) {
-              console.error("Error getting stack trace:", error);
-            }
-            break;
-
-          case "continued":
-            // Execution is continuing, finalize the current snapshot
-            finalizeSnapshot();
-            break;
-
-          case "exited":
-            // Program exited, finalize any snapshot
-            finalizeSnapshot();
-            break;
-
-          case "terminated":
-            // Debug session terminated, finalize any snapshot
-            finalizeSnapshot();
-            break;
-
-          case "memory":
-            // If the debug adapter provides memory events, we can use them
-            if (e.body && e.body.memoryReference) {
-              console.log("Memory changed:", e.body);
-              // This could be useful for tracking memory changes
-            }
-            break;
-
-          // Handle other relevant events as needed
-        }
-      })
-    );
-
-    // Specifically handle the `breakpoint` event if the debug adapter supports it
-    disposables.push(
-      vscode.debug.onDidReceiveDebugSessionCustomEvent(async (e) => {
-        if (e.session.id !== debugSession.id || e.event !== "breakpoint") {
-          return;
-        }
-
-        console.log("Breakpoint hit:", e.body);
-
-        // Similar logic to the 'stopped' event but specific to breakpoints
-        try {
-          // Create a new snapshot for this breakpoint hit
-          createNewSnapshot();
-
-          if (currentSnapshot && e.body) {
-            // Add breakpoint specific info
-            currentSnapshot.contextInfo = {
-              ...currentSnapshot.contextInfo,
-              breakpointId: e.body.breakpoint?.id,
-              breakpointLine: e.body.breakpoint?.line,
-              reason: "breakpoint",
-            };
-          }
-
-          // Get the current stack frame to evaluate expressions
-          if (e.body.threadId) {
-            const stackTraceResponse = await e.session.customRequest(
-              "stackTrace",
-              {
-                threadId: e.body.threadId,
-              }
-            );
-
-            if (
-              stackTraceResponse &&
-              stackTraceResponse.stackFrames &&
-              stackTraceResponse.stackFrames.length > 0
-            ) {
-              const frameId = stackTraceResponse.stackFrames[0].id;
-
-              // Record state changes at this breakpoint
-              await recordStateChanges(frameId);
-            }
-          }
-        } catch (error) {
-          console.error("Error processing breakpoint event:", error);
-        }
-      })
-    );
-
-    // Listen for step completed events
-    disposables.push(
-      vscode.debug.onDidReceiveDebugSessionCustomEvent(async (e) => {
-        if (e.session.id !== debugSession.id || e.event !== "step") {
-          return;
-        }
-
-        console.log("Step completed:", e.body);
-
-        // Create a new snapshot for this step
-        createNewSnapshot();
-
-        if (currentSnapshot && e.body) {
-          // Add step specific info
-          currentSnapshot.contextInfo = {
-            ...currentSnapshot.contextInfo,
-            reason: "step",
-            stepType: e.body.type, // 'in', 'out', 'over', etc.
-          };
-        }
-
-        // Get the current stack frame to evaluate expressions
-        if (e.body.threadId) {
-          try {
-            const stackTraceResponse = await e.session.customRequest(
-              "stackTrace",
-              {
-                threadId: e.body.threadId,
-              }
-            );
-
-            if (
-              stackTraceResponse &&
-              stackTraceResponse.stackFrames &&
-              stackTraceResponse.stackFrames.length > 0
-            ) {
-              const frameId = stackTraceResponse.stackFrames[0].id;
-
-              // Record state changes after this step
-              await recordStateChanges(frameId);
-            }
-          } catch (error) {
-            console.error("Error processing step event:", error);
-          }
-        }
-      })
-    );
-
-    // Also set up a command that can be triggered manually to capture state
-    disposables.push(
-      vscode.commands.registerCommand(
-        "ethereumStateTracker.captureDebugState",
-        async () => {
-          if (
-            !vscode.debug.activeDebugSession ||
-            vscode.debug.activeDebugSession.id !== debugSession.id
-          ) {
-            vscode.window.showWarningMessage(
-              "No active debug session to capture state from"
-            );
-            return;
-          }
-
-          try {
-            // Get the current stack frame to evaluate expressions
-            const stackTraceResponse =
-              await vscode.debug.activeDebugSession.customRequest(
-                "stackTrace",
-                {
-                  threadId: 0, // Assuming main thread
-                }
-              );
-
-            if (
-              stackTraceResponse &&
-              stackTraceResponse.stackFrames &&
-              stackTraceResponse.stackFrames.length > 0
-            ) {
-              const frameId = stackTraceResponse.stackFrames[0].id;
-
-              // Create a new snapshot specifically for this manual capture
-              createNewSnapshot();
-
-              if (currentSnapshot) {
-                currentSnapshot.contextInfo = {
-                  ...currentSnapshot.contextInfo,
-                  reason: "manual_capture",
-                };
-              }
-
-              // Record state changes for this manual capture
-              await recordStateChanges(frameId);
-
-              // Finalize the snapshot immediately
-              finalizeSnapshot();
-
-              vscode.window.showInformationMessage(
-                "Debug state captured successfully"
-              );
-            } else {
-              vscode.window.showWarningMessage(
-                "Could not get stack frames from debug session"
-              );
-            }
-          } catch (error) {
-            console.error("Error capturing debug state manually:", error);
-            vscode.window.showErrorMessage(
-              `Error capturing debug state: ${
-                error instanceof Error ? error.message : String(error)
-              }`
-            );
-          }
-        }
-      )
-    );
-
-    // Create a composite disposable from all registered listeners
-    return vscode.Disposable.from(...disposables);
   }
 
   /**
    * Clean up resources when the extension is deactivated
    */
   public dispose() {
-    this.snapshotCreatedEmitter.dispose();
+    this.snapshotCreatedEmitter.dispose()
+    this.contractAnalyzedEmitter.dispose()
   }
 }

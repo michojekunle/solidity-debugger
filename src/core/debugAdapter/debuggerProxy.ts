@@ -172,7 +172,7 @@ export class SolidityDebuggerProvider implements DebugAdapterDescriptorFactory {
       const port = await this.hardhatAdapter.start(startArgs);
 
       // Register the debug session in the state collector for context
-      this.stateCollector.collectDebugState(session);
+      // this.stateCollector.collectDebugState(session);
 
       // Connect to the debug server
       await this.hardhatAdapter.connect(port);
@@ -237,7 +237,7 @@ export class SolidityDebuggerProvider implements DebugAdapterDescriptorFactory {
       const port = await this.foundryAdapter.start(startArgs);
 
       // Register the debug session in the state collector for context
-      this.stateCollector.collectDebugState(session);
+      // this.stateCollector.collectDebugState(session);
 
       // Connect to the debug server
       await this.foundryAdapter.connect(port);
