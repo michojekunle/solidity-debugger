@@ -94,12 +94,18 @@ const App: React.FC = () => {
       <header>
         <div className="header-title">
           <h1>Solidity State Visualizer</h1>
-          {contractName && <div className="contract-name">State Visualisation for {contractName}.sol</div>}
+          {contractName && (
+            <div className="contract-name">
+              State Visualisation for {contractName}.sol
+            </div>
+          )}
         </div>
-        
-        <VSCodeButton onClick={requestAnalysis}>
-          {loading ? "Analyzing..." : "Analyze Current Contract"}
-        </VSCodeButton>
+
+        {!contractName && (
+          <VSCodeButton onClick={requestAnalysis}>
+            {loading ? "Analyzing..." : "Analyze Current Contract"}
+          </VSCodeButton>
+        )}
       </header>
 
       <VSCodePanels
