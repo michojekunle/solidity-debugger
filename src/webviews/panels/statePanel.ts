@@ -180,6 +180,7 @@ export class StateVisualizerPanel {
         storageVariables: this.extractStorageVariables(contractInfo.storageLayout),
       })
     } else if (this._stateProcessorService) {
+      
       // Otherwise try to get the current contract info from the service
       const contractName = this._stateProcessorService.getCurrentContractName?.() || "Unknown Contract"
       const abi = this._stateProcessorService.getCurrentContractAbi?.() || []

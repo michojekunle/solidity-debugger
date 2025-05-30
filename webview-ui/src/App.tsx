@@ -37,6 +37,7 @@ const App: React.FC = () => {
     // Set up message listener
     window.addEventListener("message", handleMessage);
 
+    
     // Request initial state when component mounts
     vscode.postMessage({
       command: "getContractInfo",
