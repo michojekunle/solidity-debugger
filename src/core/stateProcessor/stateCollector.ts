@@ -246,7 +246,9 @@ export class StateCollector implements vscode.Disposable {
         content,
         filePath
       );
+
       console.log("Compilation result:", compilationResult);
+      
       if (!compilationResult) {
         vscode.window.showErrorMessage("Failed to compile contract");
         return false;

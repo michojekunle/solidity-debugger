@@ -172,6 +172,7 @@ export class StateVisualizerPanel {
 
   private sendContractInfoToWebview(contractInfo?: any) {
     if (contractInfo) {
+      console.log("Contract info received:", contractInfo)
       // If we have contract info from an event, use it
       this._panel.webview.postMessage({
         command: "contractAnalyzed",
