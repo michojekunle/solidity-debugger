@@ -18,20 +18,28 @@
   "contributes": {
     "commands": [
       {
-        "command": "solidity-debugger.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "solidityDebugger.showStateVisualizer",
-        "title": "Solidity: Show State Visualizer"
+        "title": "Solidity Debugger: Show State Visualizer"
       },
       {
         "command": "solidityDebugger.showGasAnalyzer",
-        "title": "Solidity: Show Gas Analyzer"
+        "title": "Solidity Debugger: Show Gas Analyzer"
       },
       {
-        "command": "solidityDebugger.showHelp",
-        "title": "Solidity: Show Help & Resources"
+        "command": "solidityDebugger.analyzeContractState",
+        "title": "Solidity Debugger: Analyze Contract State"
+      },
+      {
+        "command": "solidityDebugger.analyzeGasUsage",
+        "title": "Solidity Debugger: Analyze Gas Usage"
+      },
+      {
+        "command": "solidityDebugger.stateVisualiser.nextStep",
+        "title": "Solidity Debugger: Next Step"
+      },
+      {
+        "command": "solidityDebugger.stateVisualiser.resetState",
+        "title": "State Visualiser: Reset State"
       }
     ],
     "debuggers": [
@@ -90,32 +98,52 @@
         },
         {
           "when": "resourceLangId == solidity",
-          "command": "solidityDebugger.showHelp",
+          "command": "solidityDebugger.analyzeContractState",
           "group": "navigation"
+        },
+        {
+          "when": "resourceLangId == solidity",
+          "command": "solidityDebugger.analyzeGasUsage",
+          "group": "navigation"
+        }
+      ],
+    "webview/context": [
+        {
+          "command": "solidityDebugger.stateVisualiser.nextStep",
+          "when": "webviewId == 'stateVisualizer'"
+        },
+        {
+          "command": "solidityDebugger.stateVisualiser.resetState",
+          "when": "webviewId == 'stateVisualizer'"
         }
       ]
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run package",
-    "compile": "webpack",
-    "watch": "webpack --watch",
-    "package": "webpack --mode production --devtool hidden-source-map",
+    "install:all": "npm install && cd webview-ui && npm install",
+    "start:webview": "cd webview-ui && npm run dev",
+    "build:webview": "cd webview-ui && npm run build",
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
     "pretest": "npm run compile && npm run lint",
-    "test": "vscode-test",
-		"lint": "eslint"
+    "lint": "eslint src",
+    "test": "vscode-test"
   },
   "dependencies": {
     "@ethersproject/abi": "^5.7.0",
     "@ethersproject/providers": "^5.7.0",
-    "ethers": "^5.7.0",
-    "web3": "^1.8.0",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
+    "ethers": "^5.7.0",
+    "minimatch": "^5.1.6",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "solc": "^0.8.30",
+    "web3": "^1.8.0"
   },
   "devDependencies": {
+    "@types/glob": "^8.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.96.0",
@@ -124,12 +152,11 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.19.0",
-    "typescript": "^5.7.3",
-    "@types/glob": "^8.0.0",
     "glob": "^8.0.3",
     "jest": "^28.1.3",
     "ts-jest": "^28.0.7",
     "ts-loader": "^9.3.1",
+    "typescript": "^5.7.3",
     "webpack": "^5.74.0",
     "webpack-cli": "^4.10.0"
   }
