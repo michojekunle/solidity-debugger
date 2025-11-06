@@ -1,90 +1,152 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState } from "react"
+import type React from "react";
+import { useState, useCallback } from "react";
 import {
   VSCodeButton,
   VSCodeTextField,
   VSCodeDropdown,
   VSCodeOption,
   VSCodeDivider,
-} from "@vscode/webview-ui-toolkit/react"
-import type { ContractFunction, ContractState } from "../types"
-import { vscode } from "../vscode"
+} from "@vscode/webview-ui-toolkit/react";
+import type { ContractFunction, ContractState } from "../types";
+import { vscode } from "../vscode";
 
 interface ContractSimulatorProps {
-  contractFunctions: ContractFunction[]
-  currentState: ContractState
+  contractFunctions: ContractFunction[];
+  currentState: ContractState;
+  onExecuting?: (executing: boolean) => void;
 }
 
-const ContractSimulator: React.FC<ContractSimulatorProps> = ({ contractFunctions, currentState }) => {
-  const [selectedFunction, setSelectedFunction] = useState<ContractFunction | null>(null)
-  const [inputValues, setInputValues] = useState<Record<string, string>>({})
-  const [isExecuting, setIsExecuting] = useState(false)
+const ContractSimulator: React.FC<ContractSimulatorProps> = ({
+  contractFunctions,
+  currentState,
+  onExecuting,
+}) => {
+  const [selectedFunction, setSelectedFunction] =
+    useState<ContractFunction | null>(null);
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionResult, setExecutionResult] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
 
-  const handleFunctionSelect = (event: any) => {
-    const funcName = event.target.value
-    const func = contractFunctions.find((f) => f.name === funcName) || null
-    setSelectedFunction(func)
+  const handleFunctionSelect = useCallback(
+    (event: any) => {
+      const funcName = event.target.value;
+      const func = contractFunctions.find((f) => f.name === funcName) || null;
+      setSelectedFunction(func);
+      setExecutionResult(null);
+      setLastError(null);
 
-    // Reset input values when changing functions
-    if (func) {
-      const initialInputs: Record<string, string> = {}
-      func.inputs.forEach((input) => {
-        initialInputs[input.name] = ""
-      })
-      setInputValues(initialInputs)
-    } else {
-      setInputValues({})
-    }
-  }
+      if (func) {
+        const initialInputs: Record<string, string> = {};
+        func.inputs.forEach((input) => {
+          initialInputs[input.name] = "";
+        });
+        setInputValues(initialInputs);
+      } else {
+        setInputValues({});
+      }
+    },
+    [contractFunctions]
+  );
 
-  const handleInputChange = (name: string, value: string) => {
+  const handleInputChange = useCallback((name: string, value: string) => {
     setInputValues((prev) => ({
       ...prev,
       [name]: value,
-    }))
-  }
+    }));
+    setLastError(null);
+  }, []);
 
-  const executeFunction = () => {
-    if (!selectedFunction) return
+  const validateInputs = (): boolean => {
+    if (!selectedFunction) {
+      setLastError("No function selected");
+      return false;
+    }
 
-    setIsExecuting(true)
+    for (const input of selectedFunction.inputs) {
+      const value = inputValues[input.name];
 
-    // Format inputs based on their types
-    const formattedInputs = selectedFunction.inputs.map((input) => {
-      const value = inputValues[input.name] || ""
-
-      // Format based on type
-      if (input.type.includes("int")) {
-        // For integers, ensure they're properly formatted
-        return value === "" ? "0" : value
-      } else if (input.type === "address") {
-        // For addresses, ensure they have 0x prefix
-        return value.startsWith("0x") ? value : `0x${value}`
-      } else if (input.type === "bool") {
-        // For booleans, convert string to actual boolean
-        return value.toLowerCase() === "true" || value === "1"
-      } else {
-        // For other types (strings, bytes, etc.)
-        return value
+      if (!value) {
+        setLastError(`Missing required input: ${input.name}`);
+        return false;
       }
-    })
 
-    // Send message to extension to execute the function
-    vscode.postMessage({
-      command: "executeContractFunction",
-      functionName: selectedFunction.name,
-      inputs: formattedInputs,
-      currentState: currentState,
-    })
+      // Type-specific validation
+      if (input.type.includes("uint") || input.type.includes("int")) {
+        if (!/^-?\d+$/.test(value)) {
+          setLastError(`${input.name} must be a valid number`);
+          return false;
+        }
+      } else if (input.type === "address") {
+        if (!/^0x[0-9a-fA-F]{40}$/.test(value)) {
+          setLastError(
+            `${input.name} must be a valid Ethereum address (0x...)`
+          );
+          return false;
+        }
+      } else if (input.type === "bool") {
+        if (!["true", "false", "0", "1"].includes(value.toLowerCase())) {
+          setLastError(`${input.name} must be true, false, 0, or 1`);
+          return false;
+        }
+      }
+    }
 
-    // Reset execution state after a delay (or ideally when we get a response)
-    setTimeout(() => {
-      setIsExecuting(false)
-    }, 1000)
-  }
+    return true;
+  };
+
+  const executeFunction = useCallback(() => {
+    if (!validateInputs()) {
+      return;
+    }
+
+    if (!selectedFunction) return;
+
+    setIsExecuting(true);
+    setExecutionResult(null);
+    setLastError(null);
+    onExecuting?.(true);
+
+    try {
+      // Format inputs based on their types
+      const formattedInputs = selectedFunction.inputs.map((input) => {
+        const value = inputValues[input.name] || "";
+
+        if (input.type.includes("int")) {
+          return value === "" ? "0" : value;
+        } else if (input.type === "address") {
+          return value.startsWith("0x") ? value : `0x${value}`;
+        } else if (input.type === "bool") {
+          return value.toLowerCase() === "true" || value === "1";
+        } else {
+          return value;
+        }
+      });
+
+      // Send message to extension
+      vscode.postMessage({
+        command: "executeContractFunction",
+        functionName: selectedFunction.name,
+        inputs: formattedInputs,
+        currentState: currentState,
+      });
+
+      setExecutionResult(`Executing ${selectedFunction.name}...`);
+
+      // Reset after delay
+      setTimeout(() => {
+        setIsExecuting(false);
+        onExecuting?.(false);
+      }, 2000);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setLastError(`Execution error: ${errorMsg}`);
+      setIsExecuting(false);
+      onExecuting?.(false);
+    }
+  }, [selectedFunction, inputValues, currentState, onExecuting]);
 
   return (
     <div className="contract-simulator">
@@ -92,7 +154,10 @@ const ContractSimulator: React.FC<ContractSimulatorProps> = ({ contractFunctions
       <p>Select a function and provide inputs to simulate contract execution</p>
 
       <div className="function-selector">
-        <VSCodeDropdown onChange={handleFunctionSelect}>
+        <VSCodeDropdown
+          onChange={handleFunctionSelect}
+          value={selectedFunction?.name || ""}
+        >
           <VSCodeOption value="">Select a function...</VSCodeOption>
           {contractFunctions.map((func) => (
             <VSCodeOption key={func.name} value={func.name}>
@@ -104,6 +169,12 @@ const ContractSimulator: React.FC<ContractSimulatorProps> = ({ contractFunctions
         </VSCodeDropdown>
       </div>
 
+      {lastError && (
+        <div className="error-message">
+          <strong>⚠️ Error:</strong> {lastError}
+        </div>
+      )}
+
       {selectedFunction && (
         <div className="function-inputs">
           <h3>{selectedFunction.name}</h3>
@@ -114,7 +185,10 @@ const ContractSimulator: React.FC<ContractSimulatorProps> = ({ contractFunctions
                   <VSCodeTextField
                     placeholder={`${input.type}`}
                     value={inputValues[input.name] || ""}
-                    onChange={(e: any) => handleInputChange(input.name, e.target.value)}
+                    onChange={(e: any) =>
+                      handleInputChange(input.name, e.target.value)
+                    }
+                    disabled={isExecuting}
                   >
                     {input.name} ({input.type})
                   </VSCodeTextField>
@@ -126,16 +200,26 @@ const ContractSimulator: React.FC<ContractSimulatorProps> = ({ contractFunctions
           )}
 
           <div className="execute-button">
-            <VSCodeButton onClick={executeFunction} disabled={isExecuting}>
+            <VSCodeButton
+              onClick={executeFunction}
+              disabled={isExecuting || !selectedFunction}
+            >
               {isExecuting ? "Executing..." : "Execute Function"}
             </VSCodeButton>
           </div>
+
+          {executionResult && (
+            <div className="execution-status">
+              <p>{executionResult}</p>
+            </div>
+          )}
 
           <VSCodeDivider />
 
           <div className="function-info">
             <p>
-              <strong>State Mutability:</strong> {selectedFunction.stateMutability}
+              <strong>State Mutability:</strong>{" "}
+              {selectedFunction.stateMutability}
             </p>
             {selectedFunction.outputs.length > 0 && (
               <div>
@@ -154,7 +238,7 @@ const ContractSimulator: React.FC<ContractSimulatorProps> = ({ contractFunctions
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default ContractSimulator
+export default ContractSimulator;

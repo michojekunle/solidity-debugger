@@ -107,7 +107,7 @@
           "group": "navigation"
         }
       ],
-    "webview/context": [
+      "webview/context": [
         {
           "command": "solidityDebugger.stateVisualiser.nextStep",
           "when": "webviewId == 'stateVisualizer'"
@@ -128,7 +128,10 @@
     "watch": "tsc -w -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:watch": "vitest --watch"
   },
   "dependencies": {
     "@ethersproject/abi": "^5.7.0",
@@ -140,12 +143,34 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "solc": "^0.8.30",
-    "web3": "^1.8.0"
+    "web3": "^1.8.0",
+    "vite": "7.2.0",
+    "@vitejs/plugin-react": "5.1.0",
+    "@eslint/js": "9.39.1",
+    "globals": "16.5.0",
+    "eslint-plugin-react-hooks": "7.0.1",
+    "eslint-plugin-react-refresh": "0.4.24",
+    "typescript-eslint": "8.46.3",
+    "vscode": "1.1.37",
+    "@vscode/webview-ui-toolkit": "1.4.0",
+    "vscode-webview": "1.0.1-beta.1",
+    "assert": "2.1.0",
+    "path": "0.12.7",
+    "child_process": "1.0.2",
+    "net": "1.0.2",
+    "fs": "0.0.1-security",
+    "next": "16.0.1",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "0.552.0",
+    "tailwind-merge": "3.3.1",
+    "tailwindcss-animate": "1.0.7",
+    "vitest": "4.0.7"
   },
   "devDependencies": {
     "@types/glob": "^8.0.0",
     "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
+    "@types/node": "24.10.0",
     "@types/vscode": "^1.96.0",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
@@ -158,6 +183,8 @@
     "ts-loader": "^9.3.1",
     "typescript": "^5.7.3",
     "webpack": "^5.74.0",
-    "webpack-cli": "^4.10.0"
+    "webpack-cli": "^4.10.0",
+    "tailwindcss": "^4.1.9",
+    "postcss": "8.5.6"
   }
 }
