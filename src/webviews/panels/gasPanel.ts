@@ -1,35 +1,33 @@
-import * as vscode from "vscode";
+import * as vscode from "vscode"
+import type { GasAnalyzerService } from "../../extension"
 
 export class GasAnalyzerPanel {
-  public static currentPanel: GasAnalyzerPanel | undefined;
-  private readonly _panel: vscode.WebviewPanel;
-  private _disposables: vscode.Disposable[] = [];
+  public static currentPanel: GasAnalyzerPanel | undefined
+  private readonly _panel: vscode.WebviewPanel
+  private _disposables: vscode.Disposable[] = []
+  private _gasAnalyzerService: GasAnalyzerService | undefined
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
-    this._panel = panel;
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, gasAnalyzerService?: GasAnalyzerService) {
+    this._panel = panel
+    this._gasAnalyzerService = gasAnalyzerService
 
     // Set the webview's initial html content
-    this._panel.webview.html = this._getHtmlForWebview(
-      this._panel.webview,
-      extensionUri
-    );
+    this._panel.webview.html = this._getHtmlForWebview(this._panel.webview, extensionUri)
 
     // Listen for when the panel is disposed
-    this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
+    this._panel.onDidDispose(() => this.dispose(), null, this._disposables)
 
     // Set up message handlers
-    this.setupMessageHandlers();
+    this.setupMessageHandlers()
   }
 
-  public static createOrShow(extensionUri: vscode.Uri) {
-    const column = vscode.window.activeTextEditor
-      ? vscode.window.activeTextEditor.viewColumn
-      : undefined;
+  public static createOrShow(extensionUri: vscode.Uri, gasAnalyzerService?: GasAnalyzerService) {
+    const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined
 
     // If we already have a panel, show it
     if (GasAnalyzerPanel.currentPanel) {
-      GasAnalyzerPanel.currentPanel._panel.reveal(column);
-      return;
+      GasAnalyzerPanel.currentPanel._panel.reveal(column)
+      return
     }
 
     // Otherwise, create a new panel
@@ -40,14 +38,14 @@ export class GasAnalyzerPanel {
       {
         enableScripts: true,
         localResourceRoots: [
-          vscode.Uri.joinPath(extensionUri, "media"),
-          vscode.Uri.joinPath(extensionUri, "webview-ui", "build"),
+          vscode.Uri.parse(extensionUri.toString() + "/media"),
+          vscode.Uri.parse(extensionUri.toString() + "/webview-ui/build"),
         ],
         retainContextWhenHidden: true,
-      }
-    );
+      },
+    )
 
-    GasAnalyzerPanel.currentPanel = new GasAnalyzerPanel(panel, extensionUri);
+    GasAnalyzerPanel.currentPanel = new GasAnalyzerPanel(panel, extensionUri, gasAnalyzerService)
   }
 
   private setupMessageHandlers() {
@@ -56,23 +54,48 @@ export class GasAnalyzerPanel {
       (message) => {
         switch (message.command) {
           case "getGasUsage":
-            // Get the current gas usage data and send it to the webview
-            const gasUsage = GasAnalyzerPanel.getGasUsage();
-            this._panel.webview.postMessage({
-              command: "updateGasUsage",
-              gasUsage,
-            });
-            break;
+            this.sendGasAnalysisResults()
+            break
+
+          case "analyzeGasUsage":
+            if (this._gasAnalyzerService) {
+              this._gasAnalyzerService.analyzeGasUsage()
+            }
+            break
         }
       },
       null,
-      this._disposables
-    );
+      this._disposables,
+    )
+
+    if (this._gasAnalyzerService) {
+      this._disposables.push(
+        this._gasAnalyzerService.onGasAnalysisComplete((gasAnalysis) => {
+          this._panel.webview.postMessage({
+            command: "updateGasUsage",
+            gasUsage: gasAnalysis,
+          })
+        }),
+      )
+    }
+  }
+
+  private sendGasAnalysisResults() {
+    if (this._gasAnalyzerService) {
+      // Trigger analysis when panel requests it
+      this._gasAnalyzerService.analyzeGasUsage()
+    } else {
+      // Fallback to mock data
+      const gasUsage = GasAnalyzerPanel.getGasUsage()
+      this._panel.webview.postMessage({
+        command: "updateGasUsage",
+        gasUsage,
+      })
+    }
   }
 
   private static getGasUsage() {
-    // This would get the gas usage from the gas estimator
-    // For demonstration, we're using mock data
+    // Mock data for testing
     return [
       {
         functionName: "transfer(address,uint256)",
@@ -85,28 +108,13 @@ export class GasAnalyzerPanel {
       {
         functionName: "mint(address,uint256)",
         gasUsed: 120000,
-        recommendations: [
-          "Batch multiple mint operations",
-          "Use uint96 instead of uint256 for smaller storage",
-        ],
+        recommendations: ["Batch multiple mint operations", "Use uint96 instead of uint256 for smaller storage"],
       },
-    ];
+    ]
   }
 
-  private _getHtmlForWebview(
-    webview: vscode.Webview,
-    extensionUri: vscode.Uri
-  ) {
-
-    console.log("Generating HTML for webview");
-    console.log("Webview URI: ", webview.asWebviewUri(extensionUri));
-    console.log("Extension URI: ", extensionUri);
-    // Use a nonce for Content Security Policy
-    // This is a random string that is used to allow inline scripts
-    // in the webview. It should be unique for each webview instance.
-    // This is a security measure to prevent XSS attacks.
-    // The nonce is generated using a random string generator.
-    const nonce = getNonce();
+  private _getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.Uri) {
+    const nonce = getNonce()
 
     return `<!DOCTYPE html>
         <html lang="en">
@@ -129,6 +137,18 @@ export class GasAnalyzerPanel {
               font-size: 24px;
               font-weight: bold;
               margin-bottom: 20px;
+            }
+            .button {
+              background-color: #0078D7;
+              color: white;
+              padding: 10px 20px;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              margin-bottom: 20px;
+            }
+            .button:hover {
+              background-color: #005A9E;
             }
             .gas-container {
               display: flex;
@@ -175,10 +195,11 @@ export class GasAnalyzerPanel {
         <body>
           <div class="container">
             <div class="title">Solidity Gas Analyzer</div>
+            <button class="button" onclick="analyzeGas()">Analyze Current Contract</button>
             <div id="gas-usage" class="gas-container">
               <!-- Gas usage will be rendered here -->
               <div class="function-gas">
-                <div class="function-name">loading...</div>
+                <div class="function-name">Waiting for analysis...</div>
               </div>
             </div>
           </div>
@@ -196,6 +217,12 @@ export class GasAnalyzerPanel {
                   break;
               }
             });
+            
+            function analyzeGas() {
+              vscode.postMessage({
+                command: 'analyzeGasUsage'
+              });
+            }
             
             // Request initial gas usage data
             vscode.postMessage({
@@ -257,29 +284,28 @@ export class GasAnalyzerPanel {
             }
           </script>
         </body>
-        </html>`;
+        </html>`
   }
 
   public dispose() {
-    GasAnalyzerPanel.currentPanel = undefined;
+    GasAnalyzerPanel.currentPanel = undefined
 
     while (this._disposables.length) {
-      const disposable = this._disposables.pop();
+      const disposable = this._disposables.pop()
       if (disposable) {
-        disposable.dispose();
+        disposable.dispose()
       }
     }
 
-    this._panel.dispose();
+    this._panel.dispose()
   }
 }
 
 function getNonce() {
-  let text = "";
-  const possible =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let text = ""
+  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
   for (let i = 0; i < 32; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
+    text += possible.charAt(Math.floor(Math.random() * possible.length))
   }
-  return text;
+  return text
 }

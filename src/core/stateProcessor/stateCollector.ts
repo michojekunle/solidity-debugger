@@ -1,39 +1,38 @@
-import * as vscode from "vscode";
-import * as ethers from "ethers";
-import * as solc from "solc";
-import * as fs from "fs";
-import * as path from "path";
-import { findImports } from "../utils";
+import * as vscode from "vscode"
+import * as ethers from "ethers"
+import * as solc from "solc"
+import * as path from "path"
+import { findImports } from "../utils"
+import { ErrorHandler } from "../../utils/errorHandler"
+
+export { ErrorHandler }
 
 /**
  * Represents a change in the smart contract state
  */
 export interface StateChange {
-  slot: string; // Storage slot that changed
-  oldValue: string; // Previous value (hex string)
-  newValue: string; // New value (hex string)
-  variableName?: string; // If available, the variable name associated with this slot
-  typeInfo?: string; // Type information for the value (uint256, address, etc.)
-  operation: string; // Operation that caused this change (SSTORE, etc.)
-  pc: number; // Program counter at time of change
-  depth: number; // Call depth
-  transaction?: string; // Transaction hash if available
+  slot: string
+  oldValue: string
+  newValue: string
+  variableName?: string
+  typeInfo?: string
+  operation: string
+  pc: number
+  depth: number
+  transaction?: string
 }
 
 /**
- * Represents a snapshot of state changes in a specific transaction/call
+ * Represents a snapshot of state changes
  */
 export interface StateSnapshot {
-  id: number; // Sequential ID of this snapshot
-  timestamp: number; // When this snapshot was created
-  changes: StateChange[]; // State changes in this snapshot
-  hash?: string; // Transaction hash if available
-  contextInfo?: any; // Additional context about this snapshot
+  id: number
+  timestamp: number
+  changes: StateChange[]
+  hash?: string
+  contextInfo?: any
 }
 
-/**
- * Maps ABI types to more user-friendly type descriptions
- */
 const TYPE_MAPPING: Record<string, string> = {
   uint256: "Number (uint256)",
   uint128: "Number (uint128)",
@@ -52,240 +51,249 @@ const TYPE_MAPPING: Record<string, string> = {
   string: "Text String",
   bytes: "Byte Array",
   bytes32: "Fixed Bytes (32)",
-};
+}
 
 /**
  * Service for collecting and analyzing smart contract state changes
  */
 export class StateCollector implements vscode.Disposable {
-  private snapshots: StateSnapshot[] = [];
-  private slotToVariableMap: Map<string, { name: string; type: string }> =
-    new Map();
-  private currentContractAbi: any[] = [];
-  private currentContractName = "";
-  private storageLayout: any = null;
-  private provider: ethers.providers.JsonRpcProvider | null = null;
+  private snapshots: StateSnapshot[] = []
+  private slotToVariableMap: Map<string, { name: string; type: string }> = new Map()
+  private currentContractAbi: any[] = []
+  private currentContractName = ""
+  private storageLayout: any = null
+  private provider: ethers.providers.JsonRpcProvider | null = null
+  private errorHandler = new ErrorHandler()
+  private isInitialized = false
+  private initError: Error | null = null
 
-  // Event emitters
-  private snapshotCreatedEmitter = new vscode.EventEmitter<StateSnapshot>();
+  private snapshotCreatedEmitter = new vscode.EventEmitter<StateSnapshot>()
   private contractAnalyzedEmitter = new vscode.EventEmitter<{
-    contractName: string;
-    abi: any[];
-    storageLayout: any;
-  }>();
+    contractName: string
+    abi: any[]
+    storageLayout: any
+  }>()
 
-  public readonly onSnapshotCreated = this.snapshotCreatedEmitter.event;
-  public readonly onContractAnalyzed = this.contractAnalyzedEmitter.event;
+  private errorEmitter = new vscode.EventEmitter<{
+    code: string
+    message: string
+    details?: string
+  }>()
+
+  public readonly onSnapshotCreated = this.snapshotCreatedEmitter.event
+  public readonly onContractAnalyzed = this.contractAnalyzedEmitter.event
+  public readonly onError = this.errorEmitter.event
 
   constructor(private context: vscode.ExtensionContext) {
-    // Try to connect to a local Ethereum node
-    this.initializeProvider();
-
-    // Set up Solidity compilation environment
-    this.setupCompilationEnvironment();
+    try {
+      this.initializeProvider()
+      this.setupCompilationEnvironment()
+      this.isInitialized = true
+      this.errorHandler.log("StateCollector initialized successfully")
+    } catch (error) {
+      const message = `Error initializing StateCollector: ${error instanceof Error ? error.message : String(error)}`
+      this.initError = error instanceof Error ? error : new Error(message)
+      this.errorHandler.handleInitializationError(message, this.initError)
+    }
   }
 
-  /**
-   * Initialize Ethereum provider for interacting with the blockchain
-   */
+  public isReady(): boolean {
+    return this.isInitialized && this.initError === null
+  }
+
+  public getInitializationError(): Error | null {
+    return this.initError
+  }
+
   private initializeProvider() {
     try {
-      // Try common development endpoints
-      const endpoints = [
-        "http://localhost:8545", // Ganache, Hardhat
-        "http://localhost:7545", // Ganache UI default
-        "http://127.0.0.1:8545", // Alternative localhost
-      ];
+      const endpoints = ["http://localhost:8545", "http://localhost:7545", "http://127.0.0.1:8545"]
+      let lastError: Error | null = null
 
       for (const endpoint of endpoints) {
         try {
-          const provider = new ethers.providers.JsonRpcProvider(endpoint);
-          // Test the connection
-          provider
-            .getBlockNumber()
-            .then(() => {
-              this.provider = provider;
-              console.log(`Connected to Ethereum node at ${endpoint}`);
-            })
-            .catch(() => {
-              // Connection failed, try next endpoint
-            });
+          const provider = new ethers.providers.JsonRpcProvider(endpoint)
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Connection timeout")), 5000),
+          )
+          const connectionPromise = provider.getBlockNumber()
 
-          if (this.provider) break;
+          Promise.race([connectionPromise, timeoutPromise])
+            .then(() => {
+              this.provider = provider
+              this.errorHandler.log(`Connected to Ethereum node at ${endpoint}`)
+            })
+            .catch((error) => {
+              lastError = error
+              this.errorHandler.warn(`Failed to connect to ${endpoint}`, "PROVIDER_CONNECT")
+            })
+
+          if (this.provider) break
         } catch (error) {
-          // Try next endpoint
+          lastError = error instanceof Error ? error : new Error(String(error))
+          this.errorHandler.warn(`Error trying ${endpoint}`, "PROVIDER_INIT")
         }
       }
 
       if (!this.provider) {
-        console.log("Could not connect to any local Ethereum node");
+        this.errorHandler.warn(
+          "Could not connect to any local Ethereum node - some features will be unavailable",
+          "NO_PROVIDER",
+        )
       }
     } catch (error) {
-      console.error("Error initializing Ethereum provider:", error);
+      const err = error instanceof Error ? error : new Error(String(error))
+      this.errorHandler.handleError("PROVIDER_INIT_ERROR", "Error initializing Ethereum provider", "", err)
     }
   }
 
-  /**
-   * Set up the Solidity compilation environment
-   */
   private setupCompilationEnvironment() {
-    // This method would normally set up the proper solc-js environment
-    // For VSCode extensions, you might need to bundle solc or use solc installed by the user
-    console.log("Solidity compilation environment initialized");
+    this.errorHandler.log("Solidity compilation environment initialized")
   }
 
-  /**
-   * Clear all collected state
-   */
   public clearState() {
-    this.snapshots = [];
-    this.slotToVariableMap.clear();
+    this.snapshots = []
+    this.slotToVariableMap.clear()
   }
 
-  /**
-   * Process trace data from a transaction and extract state changes
-   */
   public processTraceData(traceData: any): StateSnapshot {
-    // Create a new snapshot for this transaction
-    const snapshotId = this.snapshots.length;
-    const snapshot: StateSnapshot = {
-      id: snapshotId,
-      timestamp: Date.now(),
-      changes: [],
-      hash: traceData.hash,
-      contextInfo: {
-        to: traceData.to,
-        from: traceData.from || "unknown",
-        value: traceData.value || "0x0",
-      },
-    };
+    try {
+      if (!traceData) {
+        throw new Error("Trace data is required")
+      }
 
-    // Track the slot values for this transaction
-    const slotValues: Map<string, string> = new Map();
+      if (!Array.isArray(traceData.structLogs)) {
+        throw new Error("Invalid trace data format: structLogs must be an array")
+      }
 
-    // Process each log entry in the trace
-    for (const log of traceData.structLogs) {
-      // We're mainly interested in SSTORE operations which change state
-      if (log.op === "SSTORE") {
-        const slot = log.stack[log.stack.length - 2]; // Second to last item on stack is the slot
-        const value = log.stack[log.stack.length - 1]; // Last item on stack is the value
+      const snapshotId = this.snapshots.length
+      const snapshot: StateSnapshot = {
+        id: snapshotId,
+        timestamp: Date.now(),
+        changes: [],
+        hash: traceData.hash,
+        contextInfo: {
+          to: traceData.to,
+          from: traceData.from || "unknown",
+          value: traceData.value || "0x0",
+        },
+      }
 
-        // Get the previous value for this slot
-        const oldValue = slotValues.get(slot) || "0x0";
+      const slotValues: Map<string, string> = new Map()
 
-        // Only record if the value changed
-        if (oldValue !== value) {
-          const change: StateChange = {
-            slot,
-            oldValue,
-            newValue: value,
-            operation: log.op,
-            pc: log.pc,
-            depth: log.depth,
-          };
+      for (const log of traceData.structLogs) {
+        if (!log || typeof log !== "object") {
+          this.errorHandler.warn("Invalid log entry encountered", "TRACE_PROCESSING")
+          continue
+        }
 
-          // If we have mapping information for this slot, add it
-          const varInfo = this.slotToVariableMap.get(slot);
-          if (varInfo) {
-            change.variableName = varInfo.name;
-            change.typeInfo = varInfo.type;
-          } else {
-            // Try to infer the type based on the value
-            change.typeInfo = this.inferType(value);
+        if (log.op === "SSTORE" && Array.isArray(log.stack) && log.stack.length >= 2) {
+          const slot = log.stack[log.stack.length - 2]
+          const value = log.stack[log.stack.length - 1]
+
+          if (!slot || !value) {
+            this.errorHandler.warn("Invalid SSTORE stack values", "TRACE_PROCESSING")
+            continue
           }
 
-          // Add the change to the snapshot
-          snapshot.changes.push(change);
+          const oldValue = slotValues.get(slot) || "0x0"
 
-          // Update our tracking of the current value
-          slotValues.set(slot, value);
+          if (oldValue !== value) {
+            const change: StateChange = {
+              slot,
+              oldValue,
+              newValue: value,
+              operation: log.op,
+              pc: log.pc || 0,
+              depth: log.depth || 0,
+            }
+
+            const varInfo = this.slotToVariableMap.get(slot)
+            if (varInfo) {
+              change.variableName = varInfo.name
+              change.typeInfo = varInfo.type
+            } else {
+              change.typeInfo = this.inferType(value)
+            }
+
+            snapshot.changes.push(change)
+            slotValues.set(slot, value)
+          }
         }
       }
+
+      this.snapshots.push(snapshot)
+      this.snapshotCreatedEmitter.fire(snapshot)
+
+      return snapshot
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      const message = `Error processing trace data: ${err.message}`
+      this.errorHandler.handleError("TRACE_PROCESSING_ERROR", message, "", err)
+      this.errorEmitter.fire({
+        code: "TRACE_PROCESSING_ERROR",
+        message,
+      })
+
+      return {
+        id: this.snapshots.length,
+        timestamp: Date.now(),
+        changes: [],
+      }
     }
-
-    // Add the snapshot to our collection
-    this.snapshots.push(snapshot);
-
-    // Notify listeners about the new snapshot
-    this.snapshotCreatedEmitter.fire(snapshot);
-
-    return snapshot;
   }
 
-  /**
-   * Add a simulated snapshot (from the contract simulator)
-   */
   public addSimulatedSnapshot(snapshot: StateSnapshot): void {
-    // Ensure the snapshot has a unique ID
-    snapshot.id = this.snapshots.length;
-
-    // Add the snapshot to our collection
-    this.snapshots.push(snapshot);
-
-    // Notify listeners about the new snapshot
-    this.snapshotCreatedEmitter.fire(snapshot);
-  }
-
-  /**
-   * Process an active editor to analyze storage layout of contract
-   */
-  public async analyzeActiveContract() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== "solidity") {
-      vscode.window.showWarningMessage("No Solidity file is currently active");
-      return false;
+    if (!snapshot || typeof snapshot !== "object") {
+      this.errorHandler.warn("Invalid snapshot provided", "ADD_SNAPSHOT")
+      return
     }
 
+    snapshot.id = this.snapshots.length
+    this.snapshots.push(snapshot)
+    this.snapshotCreatedEmitter.fire(snapshot)
+  }
+
+  public async analyzeActiveContract() {
     try {
-      // Get the file content
-      const content = editor.document.getText();
-      const filePath = editor.document.uri.fsPath;
-
-      // Compile the contract to get storage layout
-      const compilationResult = await this.compileSolidityContract(
-        content,
-        filePath
-      );
-
-      console.log("Compilation result:", compilationResult);
-      
-      if (!compilationResult) {
-        vscode.window.showErrorMessage("Failed to compile contract");
-        return false;
+      const editor = vscode.window.activeTextEditor
+      if (!editor || editor.document.languageId !== "solidity") {
+        throw new Error("No Solidity file is currently active")
       }
 
-      // Process the compilation output
-      this.processCompilationOutput(compilationResult);
+      const content = editor.document.getText()
+      const filePath = editor.document.uri.fsPath
 
-      // Create an initial state snapshot for the contract
-      this.createInitialStateSnapshot();
+      const compilationResult = await this.compileSolidityContract(content, filePath)
 
-      // Notify listeners about the contract analysis
+      if (!compilationResult) {
+        throw new Error("Compilation returned no result")
+      }
+
+      this.processCompilationOutput(compilationResult)
+      this.createInitialStateSnapshot()
+
       this.contractAnalyzedEmitter.fire({
         contractName: this.currentContractName,
         abi: this.currentContractAbi,
         storageLayout: this.storageLayout,
-      });
+      })
 
-      return true;
+      return true
     } catch (error) {
-      console.error("Error analyzing contract:", error);
-      vscode.window.showErrorMessage(
-        `Error analyzing contract: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      return false;
+      const err = error instanceof Error ? error : new Error(String(error))
+      const message = `Error analyzing active contract: ${err.message}`
+      this.errorHandler.handleError("CONTRACT_ANALYSIS_ERROR", message, "", err)
+      this.errorEmitter.fire({
+        code: "CONTRACT_ANALYSIS_ERROR",
+        message,
+      })
+      return false
     }
   }
 
-  /**
-   * Create an initial state snapshot for the contract
-   * This represents the contract's state after deployment
-   */
   private createInitialStateSnapshot() {
-    // Create a new snapshot for the initial state
-    const snapshotId = this.snapshots.length;
+    const snapshotId = this.snapshots.length
     const snapshot: StateSnapshot = {
       id: snapshotId,
       timestamp: Date.now(),
@@ -294,66 +302,64 @@ export class StateCollector implements vscode.Disposable {
         type: "initial_state",
         contractName: this.currentContractName,
       },
-    };
+    }
 
-    // Add default values for all storage variables
-    if (this.storageLayout && this.storageLayout.storage) {
+    if (this.storageLayout && Array.isArray(this.storageLayout.storage)) {
       for (const item of this.storageLayout.storage) {
-        const slot = "0x" + Number.parseInt(item.slot).toString(16);
-        const defaultValue = this.getDefaultValueForType(item.type);
+        if (!item || !item.slot) {
+          this.errorHandler.warn("Invalid storage item encountered", "STORAGE_LAYOUT")
+          continue
+        }
+
+        const slot = "0x" + Number.parseInt(item.slot).toString(16)
+        const defaultValue = this.getDefaultValueForType(item.type)
 
         const change: StateChange = {
           slot,
           oldValue: "0x0",
           newValue: defaultValue,
-          variableName: item.label,
+          variableName: item.label || `slot_${item.slot}`,
           typeInfo: this.mapTypeToFriendlyName(item.type),
           operation: "INITIAL",
           pc: 0,
           depth: 0,
-        };
+        }
 
-        snapshot.changes.push(change);
+        snapshot.changes.push(change)
       }
     }
 
-    // Add the snapshot to our collection if it has changes
     if (snapshot.changes.length > 0) {
-      this.snapshots.push(snapshot);
-      this.snapshotCreatedEmitter.fire(snapshot);
+      this.snapshots.push(snapshot)
+      this.snapshotCreatedEmitter.fire(snapshot)
     }
   }
 
-  /**
-   * Get a default value for a Solidity type
-   */
   private getDefaultValueForType(type: string): string {
     if (type.startsWith("uint") || type.startsWith("int")) {
-      return "0x0";
+      return "0x0"
     } else if (type === "bool") {
-      return "0x0"; // false
+      return "0x0"
     } else if (type === "address") {
-      return "0x0000000000000000000000000000000000000000";
+      return "0x0000000000000000000000000000000000000000"
     } else if (type.startsWith("bytes")) {
-      return "0x0";
+      return "0x0"
     } else if (type === "string") {
-      return "0x0";
+      return "0x0"
     } else {
-      return "0x0";
+      return "0x0"
     }
   }
 
-  /**
-   * Compile a Solidity contract and return the result, handling imports
-   */
-  private async compileSolidityContract(
-    source: string,
-    filePath: string
-  ): Promise<any> {
+  private async compileSolidityContract(source: string, filePath: string): Promise<any> {
     return new Promise((resolve, reject) => {
       try {
-        // Prepare input for solc
-        const fileName = path.basename(filePath);
+        if (!source || !filePath) {
+          reject(new Error("Source code and file path are required for compilation"))
+          return
+        }
+
+        const fileName = path.basename(filePath)
         const input = {
           language: "Solidity",
           sources: {
@@ -368,152 +374,135 @@ export class StateCollector implements vscode.Disposable {
               },
             },
           },
-        };
+        }
 
-        // Compile with import callback
-        const output = JSON.parse(
-          solc.compile(JSON.stringify(input), { import: findImports })
-        );
+        const output = JSON.parse(solc.compile(JSON.stringify(input), { import: findImports }))
 
-        // Check for errors
         if (output.errors) {
-          const hasError = output.errors.some(
-            (error: any) => error.severity === "error"
-          );
+          const hasError = output.errors.some((error: any) => error.severity === "error")
           if (hasError) {
-            reject(
-              new Error("Compilation failed: " + JSON.stringify(output.errors))
-            );
-            return;
+            reject(new Error("Compilation failed: " + output.errors.map((e: any) => e.message).join("; ")))
+            return
           }
         }
 
-        resolve(output);
+        resolve(output)
       } catch (error) {
-        reject(error);
+        reject(error)
       }
-    });
+    })
   }
 
-  /**
-   * Process the output from the Solidity compiler
-   */
   private processCompilationOutput(output: any) {
-    console.log("Processing compilation output:", output);
-    // Find the compiled contract
-    const fileName = Object.keys(output.contracts)[0];
-    const contractName = Object.keys(output.contracts[fileName])[0];
-    const contract = output.contracts[fileName][contractName];
-
-    // Save contract name
-    this.currentContractName = contractName;
-
-    // Save ABI for later use
-    this.currentContractAbi = contract.abi;
-
-    // Process the storage layout
-    this.storageLayout = contract.storageLayout;
-
-    // Map storage slots to variable names
-    if (this.storageLayout && this.storageLayout.storage) {
-      this.slotToVariableMap.clear();
-
-      for (const item of this.storageLayout.storage) {
-        const slot = "0x" + Number.parseInt(item.slot).toString(16);
-        this.slotToVariableMap.set(slot, {
-          name: item.label,
-          type: this.mapTypeToFriendlyName(item.type),
-        });
+    try {
+      if (!output || !output.contracts) {
+        throw new Error("Invalid compilation output: contracts not found")
       }
+
+      const fileNames = Object.keys(output.contracts)
+      if (fileNames.length === 0) {
+        throw new Error("No contracts found in compilation output")
+      }
+
+      const fileName = fileNames[0]
+      const contractNames = Object.keys(output.contracts[fileName])
+
+      if (contractNames.length === 0) {
+        throw new Error("No contracts found in file")
+      }
+
+      const contractName = contractNames[0]
+      const contract = output.contracts[fileName][contractName]
+
+      if (!contract) {
+        throw new Error("Contract not found in output")
+      }
+
+      this.currentContractName = contractName
+      this.currentContractAbi = contract.abi || []
+      this.storageLayout = contract.storageLayout
+
+      if (this.storageLayout && Array.isArray(this.storageLayout.storage)) {
+        this.slotToVariableMap.clear()
+
+        for (const item of this.storageLayout.storage) {
+          if (!item || !item.slot) {
+            this.errorHandler.warn("Invalid storage item in layout", "COMPILATION_PROCESSING")
+            continue
+          }
+
+          const slot = "0x" + Number.parseInt(item.slot).toString(16)
+          this.slotToVariableMap.set(slot, {
+            name: item.label || `slot_${item.slot}`,
+            type: this.mapTypeToFriendlyName(item.type),
+          })
+        }
+      }
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error))
+      const message = `Error processing compilation output: ${err.message}`
+      this.errorHandler.handleError("COMPILATION_PROCESSING_ERROR", message, "", err)
+      throw error
     }
   }
 
-  /**
-   * Get the current contract ABI
-   */
   public getCurrentContractAbi(): any[] {
-    return this.currentContractAbi;
+    return this.currentContractAbi
   }
 
-  /**
-   * Get the current contract name
-   */
   public getCurrentContractName(): string {
-    return this.currentContractName;
+    return this.currentContractName
   }
 
-  /**
-   * Get the storage layout variables
-   */
   public getStorageVariables(): any[] {
-    if (!this.storageLayout || !this.storageLayout.storage) {
-      return [];
+    if (!this.storageLayout || !Array.isArray(this.storageLayout.storage)) {
+      return []
     }
 
-    return this.storageLayout.storage.map((item: any) => ({
-      slot: "0x" + Number.parseInt(item.slot).toString(16),
-      name: item.label,
-      type: this.mapTypeToFriendlyName(item.type),
-      offset: item.offset || 0,
-    }));
+    return this.storageLayout.storage
+      .filter((item: any) => item && item.slot)
+      .map((item: any) => ({
+        slot: "0x" + Number.parseInt(item.slot).toString(16),
+        name: item.label || `slot_${item.slot}`,
+        type: this.mapTypeToFriendlyName(item.type),
+        offset: item.offset || 0,
+      }))
   }
 
-  /**
-   * Map a Solidity type to a more user-friendly description
-   */
   private mapTypeToFriendlyName(solidityType: string): string {
-    return TYPE_MAPPING[solidityType] || solidityType;
+    return TYPE_MAPPING[solidityType] || solidityType
   }
 
-  /**
-   * Attempt to infer the type of a value based on its format
-   */
   private inferType(value: string): string {
-    // Remove 0x prefix if present
-    const cleanValue = value.startsWith("0x") ? value.slice(2) : value;
+    const cleanValue = value.startsWith("0x") ? value.slice(2) : value
 
-    // Check if it's a small number (likely a bool or small uint)
     if (cleanValue === "0" || cleanValue === "1") {
-      return "Boolean or Number";
+      return "Boolean or Number"
     }
 
-    // Check if it looks like an address (20 bytes)
     if (cleanValue.length === 40) {
-      return "Likely Address";
+      return "Likely Address"
     }
 
-    // Check if it's a small number
     if (cleanValue.length <= 4) {
-      return "Small Number";
+      return "Small Number"
     }
 
-    // Default assumption for larger values
-    return "Number or Bytes";
+    return "Number or Bytes"
   }
 
-  /**
-   * Get the current available contract state snapshots
-   */
   public getSnapshots(): StateSnapshot[] {
-    return [...this.snapshots];
+    return [...this.snapshots]
   }
 
-  /**
-   * Get the current contract state based on all snapshots
-   */
   public getCurrentState(): Record<string, any> {
-    const state: Record<string, any> = {};
+    const state: Record<string, any> = {}
 
-    // Process all snapshots to build the current state
     for (const snapshot of this.snapshots) {
       for (const change of snapshot.changes) {
-        const key = change.variableName || `slot_${change.slot}`;
+        const key = change.variableName || `slot_${change.slot}`
 
-        // Create a friendly representation of the value
-        const friendlyValue = this.formatValueForDisplay(
-          change.newValue,
-          change.typeInfo
-        );
+        const friendlyValue = this.formatValueForDisplay(change.newValue, change.typeInfo)
 
         state[key] = {
           type: change.typeInfo || "unknown",
@@ -523,78 +512,63 @@ export class StateCollector implements vscode.Disposable {
           lastChanged: snapshot.id,
           slot: change.slot,
           operation: change.operation,
-        };
-      }
-    }
-
-    return state;
-  }
-
-  /**
-   * Format a value for display based on its type
-   */
-  private formatValueForDisplay(value: string, typeInfo?: string): string {
-    if (!value) return "null";
-
-    // Remove 0x prefix for processing
-    const rawValue = value.startsWith("0x") ? value.slice(2) : value;
-
-    // Convert based on inferred/known type
-    if (typeInfo) {
-      if (typeInfo.includes("Boolean")) {
-        // For boolean values
-        return rawValue === "0" ? "false" : "true";
-      }
-
-      if (typeInfo.includes("Address")) {
-        // For Ethereum addresses - keep 0x prefix
-        return value.toLowerCase();
-      }
-
-      if (typeInfo.includes("Number")) {
-        // For number types, convert to decimal
-        try {
-          // Convert hex to decimal
-          const decimal = BigInt(`0x${rawValue}`).toString(10);
-          return decimal;
-        } catch (e) {
-          return value; // Return original if conversion fails
         }
       }
     }
 
-    // For unknown types with common patterns
-    if (rawValue === "0") return "0";
-    if (rawValue === "1") return "1";
-
-    // If it looks like an address (20 bytes)
-    if (rawValue.length === 40) {
-      return `0x${rawValue.toLowerCase()}`;
-    }
-
-    // Default case: return the original value
-    return value;
+    return state
   }
 
-  /**
-   * Fetch and analyze the runtime state of a deployed contract
-   */
-  public async analyzeDeployedContract(contractAddress: string) {
-    if (!this.provider) {
-      vscode.window.showErrorMessage("No Ethereum provider available");
-      return false;
-    }
+  private formatValueForDisplay(value: string, typeInfo?: string): string {
+    if (!value) return "null"
 
-    try {
-      // Check if the address exists
-      const code = await this.provider.getCode(contractAddress);
-      if (code === "0x") {
-        vscode.window.showErrorMessage("No contract deployed at this address");
-        return false;
+    const rawValue = value.startsWith("0x") ? value.slice(2) : value
+
+    if (typeInfo) {
+      if (typeInfo.includes("Boolean")) {
+        return rawValue === "0" ? "false" : "true"
       }
 
-      // Create a new snapshot for this analysis
-      const snapshotId = this.snapshots.length;
+      if (typeInfo.includes("Address")) {
+        return value.toLowerCase()
+      }
+
+      if (typeInfo.includes("Number")) {
+        try {
+          const decimal = BigInt(`0x${rawValue}`).toString(10)
+          return decimal
+        } catch (e) {
+          return value
+        }
+      }
+    }
+
+    if (rawValue === "0") return "0"
+    if (rawValue === "1") return "1"
+
+    if (rawValue.length === 40) {
+      return `0x${rawValue.toLowerCase()}`
+    }
+
+    return value
+  }
+
+  public async analyzeDeployedContract(contractAddress: string) {
+    try {
+      if (!this.provider) {
+        throw new Error("No Ethereum provider available - cannot analyze deployed contract")
+      }
+
+      if (!contractAddress || typeof contractAddress !== "string") {
+        throw new Error("Invalid contract address provided")
+      }
+
+      const code = await this.provider.getCode(contractAddress)
+      if (code === "0x") {
+        throw new Error("No contract deployed at this address")
+      }
+
+      const snapshotId = this.snapshots.length
       const snapshot: StateSnapshot = {
         id: snapshotId,
         timestamp: Date.now(),
@@ -603,140 +577,109 @@ export class StateCollector implements vscode.Disposable {
           type: "static_analysis",
           address: contractAddress,
         },
-      };
+      }
 
-      // Get storage values for the first few slots
       for (let i = 0; i < 10; i++) {
-        const slot = "0x" + i.toString(16);
-        const value = await this.provider.getStorageAt(contractAddress, slot);
+        const slot = "0x" + i.toString(16)
+        const value = await this.provider.getStorageAt(contractAddress, slot)
 
-        // Only include non-zero values
-        if (
-          value !==
-          "0x0000000000000000000000000000000000000000000000000000000000000000"
-        ) {
+        if (value !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
           const change: StateChange = {
             slot,
-            oldValue: "0x0", // We don't know the previous value
+            oldValue: "0x0",
             newValue: value,
             operation: "ANALYSIS",
             pc: 0,
             depth: 0,
-          };
-
-          // If we have mapping information for this slot, add it
-          const varInfo = this.slotToVariableMap.get(slot);
-          if (varInfo) {
-            change.variableName = varInfo.name;
-            change.typeInfo = varInfo.type;
-          } else {
-            // Try to infer the type based on the value
-            change.typeInfo = this.inferType(value);
           }
 
-          snapshot.changes.push(change);
+          const varInfo = this.slotToVariableMap.get(slot)
+          if (varInfo) {
+            change.variableName = varInfo.name
+            change.typeInfo = varInfo.type
+          } else {
+            change.typeInfo = this.inferType(value)
+          }
+
+          snapshot.changes.push(change)
         }
       }
 
-      // Only add the snapshot if we found any state
       if (snapshot.changes.length > 0) {
-        this.snapshots.push(snapshot);
-        this.snapshotCreatedEmitter.fire(snapshot);
-        return true;
+        this.snapshots.push(snapshot)
+        this.snapshotCreatedEmitter.fire(snapshot)
+        return true
       } else {
-        vscode.window.showInformationMessage(
-          "No state found in the first 10 storage slots"
-        );
-        return false;
+        throw new Error("No state found in the first 10 storage slots")
       }
     } catch (error) {
-      console.error("Error analyzing deployed contract:", error);
-      vscode.window.showErrorMessage(
-        `Error analyzing deployed contract: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      return false;
+      const err = error instanceof Error ? error : new Error(String(error))
+      const message = `Error analyzing deployed contract: ${err.message}`
+      this.errorHandler.handleError("DEPLOYED_CONTRACT_ERROR", message, "", err)
+      this.errorEmitter.fire({
+        code: "DEPLOYED_CONTRACT_ERROR",
+        message,
+      })
+      return false
     }
   }
 
-  /**
-   * Analyze a transaction by fetching its trace
-   */
   public async analyzeTransaction(txHash: string) {
-    if (!this.provider) {
-      vscode.window.showErrorMessage("No Ethereum provider available");
-      return false;
-    }
-
     try {
-      // First check if the transaction exists
-      const tx = await this.provider.getTransaction(txHash);
-      if (!tx) {
-        vscode.window.showErrorMessage("Transaction not found");
-        return false;
+      if (!this.provider) {
+        throw new Error("No Ethereum provider available - cannot analyze transaction")
       }
 
-      // Request debug_traceTransaction from the provider
-      // Note: This requires the node to support this method
-      const trace = await this.provider.send("debug_traceTransaction", [
-        txHash,
-        { tracer: "callTracer" },
-      ]);
+      if (!txHash || typeof txHash !== "string") {
+        throw new Error("Invalid transaction hash provided")
+      }
+
+      const tx = await this.provider.getTransaction(txHash)
+      if (!tx) {
+        throw new Error("Transaction not found")
+      }
+
+      const trace = await this.provider.send("debug_traceTransaction", [txHash, { tracer: "callTracer" }])
 
       if (!trace) {
-        vscode.window.showErrorMessage(
-          "Could not retrieve transaction trace. Ensure your node supports debug_traceTransaction"
-        );
-        return false;
+        throw new Error("Could not retrieve transaction trace. Ensure your node supports debug_traceTransaction")
       }
 
-      // Process the trace data
       const traceData = {
         hash: txHash,
         from: tx.from,
         to: tx.to,
         value: tx.value.toHexString(),
         structLogs: this.convertTraceFormat(trace),
-      };
+      }
 
-      this.processTraceData(traceData);
-      return true;
+      this.processTraceData(traceData)
+      return true
     } catch (error) {
-      console.error("Error analyzing transaction:", error);
-      vscode.window.showErrorMessage(
-        `Error analyzing transaction: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      return false;
+      const err = error instanceof Error ? error : new Error(String(error))
+      const message = `Error analyzing transaction: ${err.message}`
+      this.errorHandler.handleError("TRANSACTION_ANALYSIS_ERROR", message, "", err)
+      this.errorEmitter.fire({
+        code: "TRANSACTION_ANALYSIS_ERROR",
+        message,
+      })
+      return false
     }
   }
 
-  /**
-   * Convert trace format from debug_traceTransaction to the format we use
-   */
   private convertTraceFormat(trace: any): any[] {
-    // This is a simplified conversion - actual implementation would depend on
-    // the exact format returned by your specific Ethereum node
-    const structLogs: any[] = [];
+    const structLogs: any[] = []
 
-    // Process the call tracer result
     if (trace.calls) {
-      this.processTraceCall(trace, structLogs);
+      this.processTraceCall(trace, structLogs)
     }
 
-    return structLogs;
+    return structLogs
   }
 
-  /**
-   * Process a call from the trace recursively
-   */
   private processTraceCall(call: any, structLogs: any[], depth = 1) {
-    // Process each opcode in the trace
     if (call.ops) {
       for (const op of call.ops) {
-        // Convert to our format
         if (op.op === "SSTORE") {
           structLogs.push({
             pc: op.pc || 0,
@@ -744,24 +687,21 @@ export class StateCollector implements vscode.Disposable {
             stack: op.stack || [],
             depth: depth,
             gas: op.gas || 0,
-          });
+          })
         }
       }
     }
 
-    // Process nested calls
     if (call.calls && Array.isArray(call.calls)) {
       for (const subcall of call.calls) {
-        this.processTraceCall(subcall, structLogs, depth + 1);
+        this.processTraceCall(subcall, structLogs, depth + 1)
       }
     }
   }
 
-  /**
-   * Clean up resources when the extension is deactivated
-   */
   public dispose() {
-    this.snapshotCreatedEmitter.dispose();
-    this.contractAnalyzedEmitter.dispose();
+    this.snapshotCreatedEmitter.dispose()
+    this.contractAnalyzedEmitter.dispose()
+    this.errorEmitter.dispose()
   }
 }
