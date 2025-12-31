@@ -6,6 +6,11 @@ import { HelpPanel } from "./webviews/panels/helpPanel"
 import { StateCollector, type StateSnapshot, ErrorHandler } from "./core/stateProcessor/stateCollector"
 import { ContractSimulator } from "./core/stateProcessor/contractSimulator"
 import { ValidationService } from "./utils/validation"
+import { Compiler } from "./core/utils/compiler"
+import { GasEstimator } from "./core/gasAnalyzer/gasEstimator"
+import { GasSourceMapper } from "./core/gasAnalyzer/gasSourceMapper"
+import { GasTourProvider } from "./core/gasAnalyzer/gasTourProvider"
+import { GasDecorationManager } from "./core/gasAnalyzer/gasDecorationManager"
 
 // Global reference to the state processor service
 let stateProcessorService: StateProcessorService | undefined
@@ -47,6 +52,7 @@ export class StateProcessorService implements vscode.Disposable {
   private currentSnapshotId = -1
   private validationService = new ValidationService()
   private errorHandler = new ErrorHandler()
+  private gasAnalyzerService?: GasAnalyzerService
 
   // Event emitters for UI updates
   private stateUpdateEmitter = new vscode.EventEmitter<{
@@ -77,12 +83,16 @@ export class StateProcessorService implements vscode.Disposable {
       this.contractSimulator = new ContractSimulator(this.stateCollector)
       this.registerEventListeners()
       this.registerCommands()
-      console.log("[v0] StateProcessorService initialized successfully")
+      console.log(" StateProcessorService initialized successfully")
     } catch (error) {
       const message = `Failed to initialize StateProcessorService: ${error instanceof Error ? error.message : String(error)}`
       this.errorHandler.handleInitializationError(message)
       throw error
     }
+  }
+
+  public setGasAnalyzerService(service: GasAnalyzerService) {
+      this.gasAnalyzerService = service;
   }
 
   private registerEventListeners() {
@@ -336,10 +346,17 @@ export class StateProcessorService implements vscode.Disposable {
   /**
    * Simulate execution of a contract function
    */
-  public simulateContractFunction(functionName: string, inputs: any[], currentState?: Record<string, any>) {
+  public async simulateContractFunction(functionName: string, inputs: any[], currentState?: Record<string, any>) {
     try {
       const state = currentState || this.buildCurrentState()
-      return this.contractSimulator.simulateFunction(functionName, inputs, state)
+      const result = await this.contractSimulator.simulateFunction(functionName, inputs, state)
+      
+      // Forward trace to GasAnalyzer if available
+      if (result.trace && this.gasAnalyzerService) {
+          this.gasAnalyzerService.reportRuntimeTrace(result.trace, functionName);
+      }
+      
+      return result
     } catch (error) {
       const message = `Error simulating function: ${error instanceof Error ? error.message : String(error)}`
       this.errorHandler.handleError("SIMULATION_ERROR", message)
@@ -389,7 +406,7 @@ export class StateProcessorService implements vscode.Disposable {
   /**
    * Navigate to the previous state snapshot
    */
-  private navigateToPreviousState() {
+  public navigateToPreviousState() {
     if (this.currentSnapshotId > 0) {
       this.navigateToState(this.currentSnapshotId - 1)
     }
@@ -398,7 +415,7 @@ export class StateProcessorService implements vscode.Disposable {
   /**
    * Navigate to the next state snapshot
    */
-  private navigateToNextState() {
+  public navigateToNextState() {
     const snapshots = this.stateCollector.getSnapshots()
     if (this.currentSnapshotId < snapshots.length - 1) {
       this.navigateToState(this.currentSnapshotId + 1)
@@ -408,7 +425,7 @@ export class StateProcessorService implements vscode.Disposable {
   /**
    * Navigate to a specific state snapshot
    */
-  private navigateToState(snapshotId: number) {
+  public navigateToState(snapshotId: number) {
     const snapshots = this.stateCollector.getSnapshots()
     if (snapshotId >= 0 && snapshotId < snapshots.length) {
       this.currentSnapshotId = snapshotId
@@ -419,7 +436,7 @@ export class StateProcessorService implements vscode.Disposable {
   /**
    * Reset state to initial conditions
    */
-  private resetState() {
+  public resetState() {
     this.stateCollector.clearState()
     this.currentSnapshotId = -1
     this.notifyStateUpdate()
@@ -638,7 +655,10 @@ export class StateProcessorService implements vscode.Disposable {
  */
 export class GasAnalyzerService implements vscode.Disposable {
   private disposables: vscode.Disposable[] = []
-  private gasEstimator: any // GasEstimator instance
+  private gasEstimator: GasEstimator = new GasEstimator()
+  private gasSourceMapper: GasSourceMapper = new GasSourceMapper()
+  private gasTourProvider: GasTourProvider = new GasTourProvider()
+  private gasDecorationManager: GasDecorationManager = new GasDecorationManager()
   private currentContractAbi: any[] = []
   private errorHandler = new ErrorHandler()
 
@@ -654,8 +674,9 @@ export class GasAnalyzerService implements vscode.Disposable {
 
   constructor() {
     try {
+      this.gasEstimator = new GasEstimator()
       this.registerCommands()
-      console.log("[v0] GasAnalyzerService initialized successfully")
+      console.log(" GasAnalyzerService initialized successfully")
     } catch (error) {
       const message = `Failed to initialize GasAnalyzerService: ${error instanceof Error ? error.message : String(error)}`
       this.errorHandler.handleInitializationError(message)
@@ -667,7 +688,35 @@ export class GasAnalyzerService implements vscode.Disposable {
       this.analyzeGasUsage()
     })
 
-    this.disposables.push(analyzeGasCommand)
+    const startGasTourCommand = vscode.commands.registerCommand("solidityDebugger.startGasTour", () => {
+      this.startGasTour()
+    })
+
+    const nextHotspotCommand = vscode.commands.registerCommand("solidityDebugger.nextGasHotspot", () => {
+      const editor = vscode.window.activeTextEditor
+      if (editor) {
+        this.gasTourProvider.nextHotspot(editor)
+      }
+    })
+
+    const prevHotspotCommand = vscode.commands.registerCommand("solidityDebugger.previousGasHotspot", () => {
+      const editor = vscode.window.activeTextEditor
+      if (editor) {
+        this.gasTourProvider.previousHotspot(editor)
+      }
+    })
+
+    const finishTourCommand = vscode.commands.registerCommand("solidityDebugger.finishGasTour", () => {
+      this.finishGasTour()
+    })
+
+    this.disposables.push(
+      analyzeGasCommand,
+      startGasTourCommand,
+      nextHotspotCommand,
+      prevHotspotCommand,
+      finishTourCommand
+    )
   }
 
   public async analyzeGasUsage() {
@@ -681,17 +730,45 @@ export class GasAnalyzerService implements vscode.Disposable {
       vscode.window.showInformationMessage("Analyzing gas usage...")
 
       const contractCode = editor.document.getText()
+      const filePath = editor.document.uri.fsPath
 
-      const gasAnalysis = this.performGasAnalysis(contractCode)
+      // 1. Compile to get bytecode
+      const compilationOutput = await Compiler.compile(contractCode, filePath);
+      const contractData = Compiler.getContractFromOutput(compilationOutput, filePath);
 
-      if (!gasAnalysis || gasAnalysis.length === 0) {
-        vscode.window.showErrorMessage("Could not analyze gas usage for this contract")
-        return
+      if (!contractData || !contractData.bytecode) {
+          throw new Error("Could not compile contract to retrieve bytecode");
+      }
+      
+      // 2. Analyze Bytecode via GasEstimator
+      this.gasEstimator.processTrace(contractData.bytecode, contractData.contractName);
+      
+      const usageData = this.gasEstimator.getGasUsageForFunction(contractData.contractName);
+      
+      const results = [];
+      if (usageData) {
+          results.push(usageData);
       }
 
-      this.gasAnalysisEmitter.fire(gasAnalysis)
+      // 3. Fallback/Complementary: Regex for individual function names (still useful for listing them)
+      // We can attribute a portion of the gas or just listed them with "Dynamic Analysis Required" recommendations
+      const functionPattern = /function\s+(\w+)\s*$$[^)]*$$/g
+      let match
+      while ((match = functionPattern.exec(contractCode)) !== null) {
+        const functionName = match[1]
+        // Don't duplicate if same name (unlikely for contract name vs function name)
+        if (functionName !== contractData.contractName) {
+            results.push({
+                functionName,
+                gasUsed: 0, // 0 indicates unknown/requires dynamic
+                recommendations: ["Run contract interaction to get precise gas", "Static analysis unavailable for specific function subset"]
+            })
+        }
+      }
 
-      vscode.window.showInformationMessage(`Analyzed ${gasAnalysis.length} functions`)
+      this.gasAnalysisEmitter.fire(results)
+
+      vscode.window.showInformationMessage(`Analyzed contract ${contractData.contractName}`)
     } catch (error) {
       const message = `Error analyzing gas: ${error instanceof Error ? error.message : String(error)}`
       this.errorHandler.handleError("GAS_ANALYSIS_ERROR", message)
@@ -699,86 +776,138 @@ export class GasAnalyzerService implements vscode.Disposable {
     }
   }
 
-  private performGasAnalysis(
-    contractCode: string,
-  ): { functionName: string; gasUsed: number; recommendations: string[] }[] {
-    const results: { functionName: string; gasUsed: number; recommendations: string[] }[] = []
-
-    // Extract function signatures
-    const functionPattern = /function\s+(\w+)\s*$$[^)]*$$/g
-    let match
-
-    while ((match = functionPattern.exec(contractCode)) !== null) {
-      const functionName = match[1]
-
-      // Estimate gas based on code patterns
-      const estimatedGas = this.estimateFunctionGas(contractCode, functionName)
-
-      // Generate recommendations based on patterns
-      const recommendations = this.generateRecommendations(contractCode, functionName)
-
-      results.push({
-        functionName,
-        gasUsed: estimatedGas,
-        recommendations,
-      })
-    }
-
-    return results
-  }
-
-  private estimateFunctionGas(code: string, functionName: string): number {
-    // Basic gas estimation based on common patterns
-    const baseGas = 21000
-    const storageWriteCost = 20000
-    const storageReadCost = 2100
-    const externalCallCost = 9000
-
-    let estimatedGas = baseGas
-
-    if (code.includes("SSTORE") || code.includes("storage")) {
-      estimatedGas += storageWriteCost
-    }
-
-    if (code.includes("SLOAD") || code.includes("storage")) {
-      estimatedGas += storageReadCost
-    }
-
-    if (code.includes("call") || code.includes("delegatecall")) {
-      estimatedGas += externalCallCost
-    }
-
-    return estimatedGas
-  }
-
-  private generateRecommendations(code: string, functionName: string): string[] {
-    const recommendations: string[] = []
-
-    if (code.includes("storage") && !code.includes("memory")) {
-      recommendations.push("Consider caching storage variables in memory for repeated access")
-    }
-
-    if (code.includes("+") || code.includes("-") || code.includes("*")) {
-      recommendations.push("Use unchecked blocks for arithmetic operations where overflow is impossible")
-    }
-
-    if (code.includes("for") || code.includes("while")) {
-      recommendations.push("Optimize loop operations or consider batch processing")
-    }
-
-    if (code.includes("call") || code.includes("delegatecall")) {
-      recommendations.push("Minimize external function calls when possible")
-    }
-
-    return recommendations.length > 0 ? recommendations : ["No specific optimizations detected"]
-  }
-
   public setCurrentContractAbi(abi: any[]) {
     this.currentContractAbi = abi
   }
 
+  public reportRuntimeTrace(trace: any, functionName: string) {
+      if (this.gasEstimator) {
+          this.gasEstimator.processTransactionTrace(trace, functionName);
+      }
+  }
+
+  /**
+   * Start interactive gas optimization tour
+   */
+  private async startGasTour() {
+    try {
+      const editor = vscode.window.activeTextEditor
+      if (!editor || editor.document.languageId !== "solidity") {
+        vscode.window.showErrorMessage("No Solidity file is currently active")
+        return
+      }
+
+      vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: "Analyzing gas usage...",
+        cancellable: false
+      }, async () => {
+        const contractCode = editor.document.getText()
+        const filePath = editor.document.uri.fsPath
+
+        // Compile contract
+        console.log("[Gas Tour] Compiling contract at:", filePath)
+        const compilationOutput = await Compiler.compile(contractCode, filePath)
+        console.log("[Gas Tour] Compilation output received")
+        
+        const contractData = Compiler.getContractFromOutput(compilationOutput, filePath)
+
+        if (!contractData) {
+          console.error("[Gas Tour] No contract data returned from compilation")
+          throw new Error("Could not extract contract data from compilation output. Check console for details.")
+        }
+
+        // Extract source map and contract details early
+        const fileName = Object.keys(compilationOutput.contracts)[0]
+        const contractName = Object.keys(compilationOutput.contracts[fileName])[0]
+        const contract = compilationOutput.contracts[fileName][contractName]
+
+        if (!contractData.bytecode) {
+          console.error("[Gas Tour] Bytecode is missing or empty")
+          console.error("[Gas Tour] Contract data:", contractData)
+          
+          // Check if this is an abstract contract
+          const isAbstract = contract.evm?.bytecode?.object === ""
+          
+          if (isAbstract) {
+            vscode.window.showWarningMessage(
+              `Cannot analyze gas for ${contractData.contractName}: This appears to be an abstract contract or library. ` +
+              `Please analyze a concrete contract that can be deployed (one that inherits from ${contractData.contractName}).`,
+              "Learn More"
+            ).then(selection => {
+              if (selection === "Learn More") {
+                vscode.env.openExternal(vscode.Uri.parse(
+                  "https://docs.soliditylang.org/en/latest/contracts.html#abstract-contracts"
+                ))
+              }
+            })
+            return
+          }
+          
+          throw new Error(`Bytecode not found for contract ${contractData.contractName}. The contract may have compilation errors.`)
+        }
+
+        console.log("[Gas Tour] Bytecode length:", contractData.bytecode.length)
+
+        // Extract source map
+        const sourceMap = contract.evm?.deployedBytecode?.sourceMap || contract.evm?.bytecode?.sourceMap || ''
+
+        console.log("[Gas Tour] Source map available:", sourceMap ? 'yes' : 'no')
+
+        // Analyze gas usage
+        const hotspots = this.gasSourceMapper.analyzeGasUsage(
+          contractData.bytecode,
+          sourceMap,
+          contractCode
+        )
+
+        console.log("[Gas Tour] Found", hotspots.length, "gas hotspots")
+
+        if (hotspots.length === 0) {
+          vscode.window.showInformationMessage("No gas optimization opportunities found.")
+          return
+        }
+
+        // Apply decorations
+        this.gasDecorationManager.applyTourDecorations(editor, hotspots)
+
+        // Start tour
+        this.gasTourProvider.startTour(hotspots, editor)
+
+        // Listen for tour events
+        this.disposables.push(
+          this.gasTourProvider.onStepChanged(({ current, total, hotspot }) => {
+            this.gasDecorationManager.highlightCurrentHotspot(editor, hotspot)
+            vscode.window.showInformationMessage(
+              `Gas Optimization ${current}/${total}: ${hotspot.recommendation}`
+            )
+          }),
+          this.gasTourProvider.onTourEnded(() => {
+            // Convert to persistent diagnostics
+            this.gasDecorationManager.convertToDiagnostics(editor.document, hotspots)
+            this.gasDecorationManager.clearDecorations(editor)
+          })
+        )
+      })
+    } catch (error) {
+      const message = `Error starting gas tour: ${error instanceof Error ? error.message : String(error)}`
+      this.errorHandler.handleError("GAS_TOUR_ERROR", message)
+      vscode.window.showErrorMessage(message)
+    }
+  }
+
+  /**
+   * Finish the gas optimization tour
+   */
+  private finishGasTour() {
+    this.gasTourProvider.finishTour()
+  }
+
   public dispose() {
     this.disposables.forEach((d) => d.dispose())
+    this.gasEstimator.dispose()
+    this.gasTourProvider.dispose()
+    this.gasDecorationManager.dispose()
   }
 }
 
@@ -813,20 +942,23 @@ export class EducationalContentService implements vscode.Disposable {
 
 // This method is called when your extension is deactivated
 export function deactivate() {
-  console.log("[v0] Extension deactivated")
+  console.log(" Extension deactivated")
 }
 
 /**
  * Initializes all services for the extension
  */
 export function initializeServices(context: vscode.ExtensionContext) {
-  console.log("[v0] Initializing services...")
+  console.log(" Initializing services...")
 
   const stateProcessorService = new StateProcessorService(context)
   context.subscriptions.push(stateProcessorService)
 
   const gasAnalyzerService = new GasAnalyzerService()
   context.subscriptions.push(gasAnalyzerService)
+  
+  // Link services
+  stateProcessorService.setGasAnalyzerService(gasAnalyzerService);
 
   const educationalContentService = new EducationalContentService()
   context.subscriptions.push(educationalContentService)

@@ -27,7 +27,7 @@ export class ErrorHandler {
   ): ErrorContext {
     if (!code || !message) {
       console.warn(
-        "[v0] Invalid error context - code and message are required"
+        " Invalid error context - code and message are required"
       );
       return { code: "INVALID_ERROR", message: "Invalid error context" };
     }
@@ -57,10 +57,10 @@ export class ErrorHandler {
     const logMessage = `[${context.timestamp}] ${message}${
       details ? ` - ${details}` : ""
     }`;
-    console.error(`[v0] Error (${code}): ${logMessage}`);
+    console.error(` Error (${code}): ${logMessage}`);
 
     if (error?.stack) {
-      console.error(`[v0] Stack: ${error.stack}`);
+      console.error(` Stack: ${error.stack}`);
     }
 
     return context;
@@ -86,14 +86,14 @@ export class ErrorHandler {
    */
   public warn(message: string, code?: string): void {
     const prefix = code ? `(${code})` : "";
-    console.warn(`[v0] Warning ${prefix}: ${message}`);
+    console.warn(` Warning ${prefix}: ${message}`);
   }
 
   /**
    * Log a message
    */
   public log(message: string): void {
-    console.log(`[v0] ${message}`);
+    console.log(` ${message}`);
   }
 
   /**

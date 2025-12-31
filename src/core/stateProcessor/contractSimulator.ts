@@ -1,19 +1,19 @@
-import * as ethers from "ethers"
-import { ErrorHandler } from "../../utils/errorHandler"
-import type { StateCollector, StateChange, StateSnapshot } from "./stateCollector"
+import * as ethers from "ethers";
+import { ErrorHandler } from "../../utils/errorHandler";
+import type { StateCollector, StateChange, StateSnapshot } from "./stateCollector";
 
 /**
  * Enhanced contract simulator with better state tracking and function routing
  */
 export class ContractSimulator {
-  private contractAbi: any[] = []
-  private contractInterface: ethers.utils.Interface | null = null
-  private stateCollector: StateCollector
-  private errorHandler = new ErrorHandler()
-  private functionHistory: Array<{ functionName: string; inputs: any[]; timestamp: number }> = []
+  private contractAbi: any[] = [];
+  private contractInterface: ethers.utils.Interface | null = null;
+  private stateCollector: StateCollector;
+  private errorHandler = new ErrorHandler();
+  private functionHistory: Array<{ functionName: string; inputs: any[]; timestamp: number }> = [];
 
   constructor(stateCollector: StateCollector) {
-    this.stateCollector = stateCollector
+    this.stateCollector = stateCollector;
   }
 
   /**
@@ -22,17 +22,17 @@ export class ContractSimulator {
   public setContractAbi(abi: any[]) {
     try {
       if (!Array.isArray(abi) || abi.length === 0) {
-        this.errorHandler.warn("Empty or invalid ABI provided", "ABI_VALIDATION")
-        return
+        this.errorHandler.warn("Empty or invalid ABI provided", "ABI_VALIDATION");
+        return;
       }
 
-      this.contractAbi = abi
-      this.contractInterface = new ethers.utils.Interface(abi)
-      this.errorHandler.log("Contract interface initialized for simulation")
+      this.contractAbi = abi;
+      this.contractInterface = new ethers.utils.Interface(abi);
+      this.errorHandler.log("Contract interface initialized for simulation");
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-      this.errorHandler.handleError("ABI_INIT_ERROR", "Error initializing contract interface", "", err)
-      this.contractInterface = null
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.errorHandler.handleError("ABI_INIT_ERROR", "Error initializing contract interface", "", err);
+      this.contractInterface = null;
     }
   }
 
@@ -41,7 +41,7 @@ export class ContractSimulator {
    */
   public getContractFunctions() {
     if (!this.contractAbi || this.contractAbi.length === 0) {
-      return []
+      return [];
     }
 
     return this.contractAbi
@@ -51,65 +51,120 @@ export class ContractSimulator {
         inputs: func.inputs || [],
         outputs: func.outputs || [],
         stateMutability: func.stateMutability || "nonpayable",
-      }))
+      }));
   }
 
   /**
    * Added comprehensive function simulation with better routing
    */
-  public simulateFunction(
+  public async simulateFunction(
     functionName: string,
     inputs: any[],
     currentState: Record<string, any>,
-  ): { stateChanges: StateChange[]; newState: Record<string, any> } {
+  ): Promise<{ stateChanges: StateChange[]; newState: Record<string, any>; gasUsed?: number; trace?: any }> {
     try {
       if (!functionName || typeof functionName !== "string") {
-        throw new Error("Invalid function name provided")
+        throw new Error("Invalid function name provided");
       }
 
       if (!Array.isArray(inputs)) {
-        throw new Error("Inputs must be an array")
+        throw new Error("Inputs must be an array");
       }
 
-      if (!currentState || typeof currentState !== "object") {
-        throw new Error("Current state must be a valid object")
-      }
-
-      this.errorHandler.log(`Simulating function ${functionName} with ${inputs.length} inputs`)
+      this.errorHandler.log(`Simulating function ${functionName} with ${inputs.length} inputs`);
 
       if (!this.contractInterface) {
-        this.errorHandler.warn("Contract interface not initialized", "SIMULATION_ERROR")
-        return { stateChanges: [], newState: currentState }
+        this.errorHandler.warn("Contract interface not initialized", "SIMULATION_ERROR");
+        return { stateChanges: [], newState: currentState };
       }
 
-      // Find the function in the ABI
-      const funcFragment = this.contractInterface.getFunction(functionName)
+      const funcFragment = this.contractInterface.getFunction(functionName);
       if (!funcFragment) {
-        throw new Error(`Function ${functionName} not found in ABI`)
+        throw new Error(`Function ${functionName} not found in ABI`);
       }
 
-      // Check if function modifies state
+      // Check if view/pure - usually no state changes, but we might want to see return values? 
+      // For now, keep existing logic:
       if (funcFragment.stateMutability === "view" || funcFragment.stateMutability === "pure") {
-        this.errorHandler.log(`Function ${functionName} is view/pure, no state changes`)
-        return { stateChanges: [], newState: currentState }
+         // Maybe execute purely to show result? 
+         // For state visualizer, we care about SSTORE.
+         return { stateChanges: [], newState: currentState };
       }
 
-      const newState = { ...currentState }
-      let stateChanges: StateChange[] = []
+      const newState = { ...currentState };
+      let stateChanges: StateChange[] = [];
+      
+      // Try Runtime Simulation via RPC if we have an address or provider
+      // Check if StateCollector allows tracking
+      const contractAddress = this.stateCollector.getCurrentContractAddress();
+      
+      if (contractAddress && this.contractInterface && this.stateCollector.isReady()) {
+          try {
+             // 1. Encode transaction data
+             const data = this.contractInterface.encodeFunctionData(functionName, inputs);
+             
+             // 2. Prepare transaction object
+             const transaction = {
+                 to: contractAddress,
+                 data: data,
+                 // We rely on the node to simulate with 'from' address or default
+             };
+             
+             // 3. Call debug_traceCall
+             this.errorHandler.log(`Attempting debug_traceCall for ${functionName} at ${contractAddress}`);
+             const trace = await this.stateCollector.traceCall(transaction);
+             
+             // 4. Process Trace
+             if (trace) {
+                 const traceData = {
+                     hash: `sim_${Date.now()}`,
+                     to: contractAddress,
+                     from: "0x0000000000000000000000000000000000000000", // Simulation caller
+                     structLogs: trace.structLogs || trace, // Adapters might return different formats
+                 };
+                 
+                 // processTraceData returns a snapshot
+                 const snapshot = this.stateCollector.processTraceData(traceData);
+                 
+                 // Update context info
+                 snapshot.contextInfo = {
+                     type: "simulation_trace",
+                     function: functionName,
+                     inputs
+                 };
 
-      // Route to appropriate simulator
-      if (functionName.toLowerCase().includes("transfer")) {
-        stateChanges = this.simulateTransfer(functionName, inputs, newState)
-      } else if (functionName.toLowerCase().includes("mint")) {
-        stateChanges = this.simulateMint(functionName, inputs, newState)
+                 // Extract gasUsed from the trace result (RPC format typically returns it)
+                 // NOTE: debug_traceCall format varies by client (Geth/Hardhat/Foundry).
+                 // Standard Geth returns 'gas' or 'gasUsed' at top level.
+                 const gasUsed = trace.gas || trace.gasUsed || (trace.result ? trace.result.gasUsed : undefined);
+
+                 return { 
+                     stateChanges: snapshot.changes, 
+                     newState: this.stateCollector.getCurrentState(),
+                     gasUsed: typeof gasUsed === 'string' ? parseInt(gasUsed, 16) : gasUsed,
+                     trace: trace 
+                 };
+             }
+          } catch (traceError) {
+              this.errorHandler.warn(`Runtime simulation failed, falling back to manual: ${traceError}`, "TRACE_ERROR");
+              // Continue to fallback...
+          }
+      }
+      
+      // FALLBACK: Manual
+      const lowerName = functionName.toLowerCase();
+      if (lowerName === "transfer" || lowerName === "transferfrom") {
+        stateChanges = this.simulateTransfer(functionName, inputs, newState);
+      } else if (lowerName.includes("mint")) {
+        stateChanges = this.simulateMint(functionName, inputs, newState);
       } else if (functionName.toLowerCase().includes("burn")) {
-        stateChanges = this.simulateBurn(functionName, inputs, newState)
+        stateChanges = this.simulateBurn(functionName, inputs, newState);
       } else if (functionName.toLowerCase().startsWith("set")) {
-        stateChanges = this.simulateSetter(functionName, inputs, newState)
+        stateChanges = this.simulateSetter(functionName, inputs, newState);
       } else if (functionName.toLowerCase().includes("approve")) {
-        stateChanges = this.simulateApprove(functionName, inputs, newState)
+        stateChanges = this.simulateApprove(functionName, inputs, newState);
       } else {
-        stateChanges = this.simulateGenericFunction(functionName, inputs, newState)
+        stateChanges = this.simulateGenericFunction(functionName, inputs, newState);
       }
 
       // Track function execution
@@ -117,9 +172,8 @@ export class ContractSimulator {
         functionName,
         inputs,
         timestamp: Date.now(),
-      })
+      });
 
-      // Create and add snapshot if there were changes
       if (stateChanges.length > 0) {
         const snapshot: StateSnapshot = {
           id: Date.now(),
@@ -130,24 +184,23 @@ export class ContractSimulator {
             function: functionName,
             inputs,
           },
-        }
-
-        this.stateCollector.addSimulatedSnapshot(snapshot)
+        };
+        this.stateCollector.addSimulatedSnapshot(snapshot);
       }
 
-      return { stateChanges, newState }
+      return { stateChanges, newState };
     } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-      const message = `Error simulating function ${functionName}: ${err.message}`
-      this.errorHandler.handleError("SIMULATION_ERROR", message, "", err)
-      return { stateChanges: [], newState: currentState }
+      const err = error instanceof Error ? error : new Error(String(error));
+      const message = `Error simulating function ${functionName}: ${err.message}`;
+      this.errorHandler.handleError("SIMULATION_ERROR", message, "", err);
+      return { stateChanges: [], newState: currentState };
     }
   }
 
   /**
    * Specialized transfer simulator
    */
-  private simulateTransfer(functionName: string, inputs: any[], newState: Record<string, any>): StateChange[] {
+  private simulateTransfer(_functionName: string, inputs: any[], newState: Record<string, any>): StateChange[] {
     const stateChanges: StateChange[] = []
 
     if (inputs.length < 2) {
@@ -220,7 +273,7 @@ export class ContractSimulator {
   /**
    * Specialized mint simulator
    */
-  private simulateMint(functionName: string, inputs: any[], newState: Record<string, any>): StateChange[] {
+  private simulateMint(_functionName: string, inputs: any[], newState: Record<string, any>): StateChange[] {
     const stateChanges: StateChange[] = []
 
     if (inputs.length < 1) {
@@ -264,7 +317,7 @@ export class ContractSimulator {
   /**
    * Specialized burn simulator
    */
-  private simulateBurn(functionName: string, inputs: any[], newState: Record<string, any>): StateChange[] {
+  private simulateBurn(_functionName: string, inputs: any[], newState: Record<string, any>): StateChange[] {
     const stateChanges: StateChange[] = []
 
     if (inputs.length < 1) {
@@ -307,7 +360,7 @@ export class ContractSimulator {
   /**
    * Specialized approve simulator
    */
-  private simulateApprove(functionName: string, inputs: any[], newState: Record<string, any>): StateChange[] {
+  private simulateApprove(_functionName: string, inputs: any[], newState: Record<string, any>): StateChange[] {
     const stateChanges: StateChange[] = []
 
     if (inputs.length < 2) {
@@ -396,7 +449,7 @@ export class ContractSimulator {
   /**
    * Generic function simulator as fallback
    */
-  private simulateGenericFunction(functionName: string, inputs: any[], newState: Record<string, any>): StateChange[] {
+  private simulateGenericFunction(functionName: string, _inputs: any[], newState: Record<string, any>): StateChange[] {
     const stateChanges: StateChange[] = []
 
     try {

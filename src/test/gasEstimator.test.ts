@@ -72,7 +72,7 @@ describe("GasEstimator", () => {
       estimator.processTransactionTrace(trace)
       const usage = estimator.getGasUsage()[0]
 
-      expect(usage.recommendations.some((r) => r.includes("SLOAD"))).toBe(true)
+      expect(usage.recommendations.some((r) => r.includes("storage read"))).toBe(true)
     })
 
     it("should recommend SSTORE batching", () => {
@@ -89,7 +89,7 @@ describe("GasEstimator", () => {
       estimator.processTransactionTrace(trace)
       const usage = estimator.getGasUsage()[0]
 
-      expect(usage.recommendations.some((r) => r.includes("SSTORE"))).toBe(true)
+      expect(usage.recommendations.some((r) => r.includes("storage write"))).toBe(true)
     })
   })
 

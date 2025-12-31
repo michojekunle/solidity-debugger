@@ -1,11 +1,9 @@
-// FOUNDRY ADAPTER
 import * as childProcess from 'child_process';
 import * as net from 'net';
 import { StateCollector } from '../stateProcessor/stateCollector';
 
 export class FoundryDebugAdapter {
-  private foundryProcess?: childProcess.ChildProcess;
-  private debugSocket?: net.Socket;
+  private anvilProcess?: childProcess.ChildProcess;
   private stateCollector: StateCollector;
 
   constructor(private workspaceRoot: string, stateCollector: StateCollector) {
@@ -13,12 +11,17 @@ export class FoundryDebugAdapter {
   }
 
   public async start(additionalArgs: string[] = []): Promise<number> {
-    // Launch foundry anvil with debugging enabled
-    const args = ['anvil', ...additionalArgs];
+    // Launch anvil node
+    const baseCmd = 'anvil'; // Assuming anvil is in PATH
     
-    this.foundryProcess = childProcess.spawn(
-      args[0],
-      args.slice(1),
+    // Default args if none provided
+    const args = additionalArgs.length > 0 ? additionalArgs : ['--port', '8545'];
+    
+    console.log(`Starting Anvil in ${this.workspaceRoot} with args:`, args);
+    
+    this.anvilProcess = childProcess.spawn(
+      baseCmd,
+      args,
       { cwd: this.workspaceRoot }
     );
 
@@ -28,31 +31,27 @@ export class FoundryDebugAdapter {
 
   private async extractDebugPort(): Promise<number> {
     return new Promise<number>((resolve, reject) => {
-      if (!this.foundryProcess) {
-        return reject(new Error('Foundry process not started'));
+      if (!this.anvilProcess) {
+        return reject(new Error('Anvil process not started'));
       }
       
-      // Default port for Anvil
       const defaultPort = 8545;
       let portFound = false;
       
-      // Regular expression to extract port information from Anvil output
-      // Anvil typically shows: "Listening on 127.0.0.1:8545"
-      const portRegex = /Listening on (?:127\.0\.0\.1|localhost|0\.0\.0\.0):(\d+)/;
+      // Anvil output: "Listening on 127.0.0.1:8545"
+    const portRegex = /Listening on .*:(\d+)/;
       
-      // Set a timeout in case we don't see the expected output
       const timeout = setTimeout(() => {
         if (!portFound) {
           console.log('Did not find port in output, using default port:', defaultPort);
           portFound = true;
           resolve(defaultPort);
         }
-      }, 5000); // 5 second timeout
+      }, 5000); 
       
-      // Process stdout data
-      this.foundryProcess.stdout?.on('data', (data) => {
+      this.anvilProcess.stdout?.on('data', (data) => {
         const output = data.toString();
-        console.log('Anvil output:', output);
+        // console.log('Anvil:', output);
         
         const match = output.match(portRegex);
         if (match && match[1]) {
@@ -64,17 +63,16 @@ export class FoundryDebugAdapter {
         }
       });
       
-      // Handle potential errors
-      this.foundryProcess.stderr?.on('data', (data) => {
+      this.anvilProcess.stderr?.on('data', (data) => {
         console.error('Anvil error:', data.toString());
       });
       
-      this.foundryProcess.on('error', (err) => {
+      this.anvilProcess.on('error', (err) => {
         clearTimeout(timeout);
         reject(new Error(`Failed to start Anvil: ${err.message}`));
       });
       
-      this.foundryProcess.on('exit', (code) => {
+      this.anvilProcess.on('exit', (code) => {
         if (!portFound) {
           clearTimeout(timeout);
           reject(new Error(`Anvil exited with code ${code} before port was found`));
@@ -82,62 +80,18 @@ export class FoundryDebugAdapter {
       });
     });
   }
-
-  public async connect(port: number): Promise<void> {
-    // Connect to the foundry debug port
-    this.debugSocket = new net.Socket();
-    await new Promise<void>((resolve, reject) => {
-      this.debugSocket!.connect(port, 'localhost', () => {
-        resolve();
-      });
-      
-      this.debugSocket!.on('error', (err) => {
-        reject(err);
-      });
-    });
-
-    // Set up event listeners for state changes
-    this.setupStateChangeListeners();
-  }
-
-  private setupStateChangeListeners() {
-    if (!this.debugSocket) return;
-
-    this.debugSocket.on('data', (data) => {
-      try {
-        // Parse the debug data
-        const debugData = JSON.parse(data.toString());
-        
-        // Process state changes - updated to use the new StateCollector methods
-        if (debugData.method === 'debug_traceTransaction') {
-          // The new StateCollector processes trace data differently
-          const traceData = {
-            hash: debugData.params[0], // Transaction hash
-            structLogs: debugData.result.structLogs || [],
-            from: debugData.result.from,
-            to: debugData.result.to,
-            value: debugData.result.value
-          };
-          
-          // Process the trace data with the StateCollector
-          this.stateCollector.processTraceData(traceData);
-        }
-      } catch (error) {
-        console.error('Error processing debug data:', error);
-      }
-    });
+  
+  // No longer used for direct connection, but kept for compatibility or advanced monitoring
+  public async connect(_port: number): Promise<void> {
+      // With the new architecture, we don't need to connect via raw socket
+      // The StateCollector will connect via ethers JsonRpcProvider
+      return;
   }
 
   public async stop(): Promise<void> {
-    // Clean up resources
-    if (this.debugSocket) {
-      this.debugSocket.destroy();
-      this.debugSocket = undefined;
-    }
-    
-    if (this.foundryProcess) {
-      this.foundryProcess.kill();
-      this.foundryProcess = undefined;
+    if (this.anvilProcess) {
+      this.anvilProcess.kill();
+      this.anvilProcess = undefined;
     }
   }
 }
