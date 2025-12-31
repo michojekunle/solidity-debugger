@@ -1,6 +1,18 @@
 import * as solc from "solc"
 import * as path from "path"
 import { findImports } from "./index"
+import { DependencyChecker } from "./dependencyChecker"
+
+/**
+ * Custom error for missing dependencies
+ * This signals that only the dependency UI should be shown, not a generic error
+ */
+export class MissingDependencyError extends Error {
+  constructor(message: string, public readonly dependencies: string[], public readonly installCommand: string) {
+    super(message);
+    this.name = 'MissingDependencyError';
+  }
+}
 
 export class Compiler {
   public static async compile(source: string, filePath: string): Promise<any> {
@@ -9,6 +21,21 @@ export class Compiler {
         if (!source || !filePath) {
           reject(new Error("Source code and file path are required for compilation"))
           return
+        }
+
+        // Check for missing dependencies before compiling
+        const depCheck = DependencyChecker.checkDependencies(source, filePath);
+        if (depCheck.missing.length > 0) {
+          // Show the helpful UI with install command
+          DependencyChecker.showDependencyError(depCheck);
+          
+          // Throw custom error so callers know not to show generic error
+          reject(new MissingDependencyError(
+            `Missing dependencies: ${depCheck.missing.join(', ')}`,
+            depCheck.missing,
+            depCheck.installCommand
+          ));
+          return;
         }
 
         const fileName = path.basename(filePath)
@@ -33,7 +60,14 @@ export class Compiler {
         if (output.errors) {
           const hasError = output.errors.some((error: any) => error.severity === "error")
           if (hasError) {
-            reject(new Error("Compilation failed: " + output.errors.map((e: any) => e.message).join("; ")))
+            const errorMessage = output.errors.map((e: any) => e.message).join("; ");
+            
+            // Check if error is due to missing imports
+            if (DependencyChecker.isMissingImportError(errorMessage)) {
+              DependencyChecker.showDependencyError(depCheck);
+            }
+            
+            reject(new Error("Compilation failed: " + errorMessage))
             return
           }
         }

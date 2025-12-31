@@ -281,8 +281,23 @@ export class StateProcessorService implements vscode.Disposable {
               throw new Error(`Failed to analyze contract at ${address}`)
             }
           } catch (error) {
-            const message = `Error analyzing deployed contract: ${error instanceof Error ? error.message : String(error)}`
-            this.errorEmitter.fire({
+        // Assuming 'this.gasTourActive' and 'MissingDependencyError' are relevant to this context
+        // and that the user intends to add this specific error handling here.
+        // The original error handling for DEPLOYED_CONTRACT_ERROR will still be executed
+        // if it's not a MissingDependencyError.
+        // Note: The provided snippet seems to be a mix of different error handling contexts.
+        // I'm integrating the 'MissingDependencyError' check while preserving the original error handling.
+        if (error instanceof Error && error.name === 'MissingDependencyError') {
+          // If it's a MissingDependencyError, assume the helpful UI was already shown
+          // and prevent the generic DEPLOYED_CONTRACT_ERROR message.
+          // This assumes 'this.gasTourActive' is managed elsewhere and not directly set here.
+          console.error('[GasTour] Failed to start gas tour due to missing dependency:', error);
+          return; // Exit without showing generic error
+        }
+
+        // Original error handling for other errors
+        const message = `Error analyzing deployed contract: ${error instanceof Error ? error.message : String(error)}`
+        this.errorEmitter.fire({
               code: "DEPLOYED_CONTRACT_ERROR",
               message,
             })
