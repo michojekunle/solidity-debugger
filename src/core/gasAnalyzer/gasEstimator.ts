@@ -1,5 +1,6 @@
 import * as vscode from "vscode"
 import { ErrorHandler } from "../../utils/errorHandler"
+import { BytecodeAnalyzer, OpcodeStats } from "./bytecodeAnalyzer"
 
 interface GasUsage {
   functionName: string
@@ -18,21 +19,61 @@ export class GasEstimator implements vscode.Disposable {
   private gasUsageMap: Map<string, GasUsage> = new Map()
   private eventEmitter = new vscode.EventEmitter<GasUsage[]>()
   private errorHandler = new ErrorHandler()
+  private bytecodeAnalyzer = new BytecodeAnalyzer()
 
   public readonly onGasEstimationUpdated = this.eventEmitter.event
 
   /**
+   * Process transaction trace or static bytecode
+   */
+  public processTrace(traceOrBytecode: any, functionName: string = "Unknown") {
+      if (typeof traceOrBytecode === 'string') {
+          // It's bytecode
+          this.analyzeStaticBytecode(traceOrBytecode, functionName);
+      } else {
+          // It's a JSON-RPC trace
+          this.processTransactionTrace(traceOrBytecode, functionName);
+      }
+  }
+
+  private analyzeStaticBytecode(bytecode: string, functionName: string) {
+      try {
+          const stats = this.bytecodeAnalyzer.analyze(bytecode);
+          const estimatedGas = this.bytecodeAnalyzer.estimateBaseGas(stats);
+          const recommendations = this.generateOptimizationRecommendations(null, stats); // null trace for static
+
+          const gasUsage: GasUsage = {
+              functionName,
+              gasUsed: estimatedGas,
+              recommendations,
+              timestamp: Date.now(),
+              sloadCount: stats.sloadCount,
+              sstoreCount: stats.sstoreCount,
+              callCount: stats.callCount
+          };
+
+          this.gasUsageMap.set(functionName, gasUsage);
+          this.eventEmitter.fire(Array.from(this.gasUsageMap.values()));
+          
+      } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          this.errorHandler.handleError("GAS_ANALYSIS_ERROR", "Error analyzing bytecode", "", err);
+      }
+  }
+
+
+  /**
    * Improved trace processing with validation
    */
-  public processTransactionTrace(traceData: any) {
+  public processTransactionTrace(traceData: any, knownFunctionName?: string) {
     try {
-      if (!traceData || typeof traceData !== "object") {
+      if (!traceData || typeof traceData !== "object" || (!traceData.result && !traceData.structLogs)) {
         this.errorHandler.warn("Invalid trace data provided", "GAS_ANALYSIS")
         return
       }
 
       const gasUsed = traceData.result?.gasUsed || 0
-      const functionName = this.extractFunctionName(traceData)
+      const functionName = knownFunctionName || this.extractFunctionName(traceData)
 
       const opcodeStats = this.analyzeOpcodes(traceData)
 
@@ -87,13 +128,10 @@ export class GasEstimator implements vscode.Disposable {
   /**
    * New method to analyze opcodes in trace
    */
-  private analyzeOpcodes(traceData: any) {
-    const stats = {
-      sloadCount: 0,
-      sstoreCount: 0,
-      callCount: 0,
-    }
-
+  private analyzeOpcodes(traceData: any): OpcodeStats {
+      // Reconstitute stats from trace logs
+     const stats: OpcodeStats = { sloadCount: 0, sstoreCount: 0, callCount: 0, delegateCallCount: 0, staticCallCount: 0, logCount: 0, createCount: 0, selfDestructCount: 0, memoryOpsCount: 0, cryptoOpsCount: 0, totalOpcodes: 0};
+    
     try {
       if (!Array.isArray(traceData.structLogs)) {
         return stats
@@ -101,10 +139,15 @@ export class GasEstimator implements vscode.Disposable {
 
       for (const log of traceData.structLogs) {
         if (!log || typeof log !== "object") continue
-
+        
+        // This is a rough mapping from trace strings to stats
         if (log.op === "SLOAD") stats.sloadCount++
         else if (log.op === "SSTORE") stats.sstoreCount++
-        else if (log.op === "CALL" || log.op === "DELEGATECALL") stats.callCount++
+        else if (log.op === "CALL") stats.callCount++
+        else if (log.op === "DELEGATECALL") stats.delegateCallCount++
+        else if (log.op === "STATICCALL") stats.staticCallCount++
+        else if (log.op && log.op.startsWith("LOG")) stats.logCount++
+        else if (log.op === "SHA3") stats.cryptoOpsCount++
       }
     } catch (error) {
       this.errorHandler.warn("Error analyzing opcodes", "OPCODE_ANALYSIS")
@@ -124,12 +167,13 @@ export class GasEstimator implements vscode.Disposable {
 
     try {
       const { sloadCount, sstoreCount, callCount } = opcodeStats
-      const gasUsed = traceData.result?.gasUsed || 0
+      // traceData is null for static analysis
+      const gasUsed = traceData ? (traceData.result?.gasUsed || 0) : 0
 
-      // High gas usage check
-      if (gasUsed > 500000) {
+      // High gas usage check (dynamic only)
+      if (traceData && gasUsed > 500000) {
         recommendations.push("High gas usage detected. Consider refactoring to reduce complexity.")
-      } else if (gasUsed > 100000) {
+      } else if (traceData && gasUsed > 100000) {
         recommendations.push("Moderate gas usage. Look for optimization opportunities.")
       }
 
@@ -155,7 +199,7 @@ export class GasEstimator implements vscode.Disposable {
 
       // Provide default recommendation if none generated
       if (recommendations.length === 0) {
-        recommendations.push("Function is reasonably optimized.")
+        recommendations.push("Function appears reasonably optimized based on static analysis.")
       }
     } catch (error) {
       this.errorHandler.warn("Error generating recommendations", "RECOMMENDATION_GEN")

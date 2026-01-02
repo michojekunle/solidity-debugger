@@ -23,7 +23,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error) {
-    console.error("[v0] Error caught by boundary:", error)
+    console.error("Error caught by boundary:", error)
     this.setState((prev) => ({
       errorCount: prev.errorCount + 1,
     }))

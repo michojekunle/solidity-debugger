@@ -113,7 +113,7 @@ export class GasAnalyzerPanel {
     ]
   }
 
-  private _getHtmlForWebview(webview: vscode.Webview, extensionUri: vscode.Uri) {
+  private _getHtmlForWebview(_webview: vscode.Webview, _extensionUri: vscode.Uri) {
     const nonce = getNonce()
 
     return `<!DOCTYPE html>

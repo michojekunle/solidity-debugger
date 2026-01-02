@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import * as path from "path";
 
 export class HelpPanel {
   public static currentPanel: HelpPanel | undefined;
@@ -40,8 +41,8 @@ export class HelpPanel {
       {
         enableScripts: true,
         localResourceRoots: [
-          vscode.Uri.joinPath(extensionUri, "media"),
-          vscode.Uri.joinPath(extensionUri, "webview-ui", "build"),
+          vscode.Uri.file(path.join(extensionUri.fsPath, "media")),
+          vscode.Uri.file(path.join(extensionUri.fsPath, "webview-ui", "build")),
         ],
         retainContextWhenHidden: true,
       }

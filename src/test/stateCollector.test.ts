@@ -162,7 +162,7 @@ describe("StateCollector", () => {
   })
 
   describe("snapshot events", () => {
-    it("should emit snapshot created event", (done) => {
+    it("should emit snapshot created event", (_done) => {
       const unsubscribe = stateCollector.onSnapshotCreated((snapshot) => {
         expect(snapshot).toBeDefined()
         // unsubscribe()
@@ -184,7 +184,7 @@ describe("StateCollector", () => {
       stateCollector.processTraceData(traceData)
     })
 
-    it("should emit error events on invalid input", (done) => {
+    it("should emit error events on invalid input", (_done) => {
       const unsubscribe = stateCollector.onError((error) => {
         expect(error.code).toBeDefined()
         // unsubscribe()
