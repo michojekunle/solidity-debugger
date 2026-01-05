@@ -8,9 +8,10 @@ import { ContractSimulator } from "./core/stateProcessor/contractSimulator"
 import { ValidationService } from "./utils/validation"
 import { Compiler } from "./core/utils/compiler"
 import { GasEstimator } from "./core/gasAnalyzer/gasEstimator"
-import { GasSourceMapper } from "./core/gasAnalyzer/gasSourceMapper"
-import { GasTourProvider } from "./core/gasAnalyzer/gasTourProvider"
-import { GasDecorationManager } from "./core/gasAnalyzer/gasDecorationManager"
+import { GasSourceMapper } from "./core/gasAnalyzer/gasSourceMapper";
+import { GasTourProvider } from "./core/gasAnalyzer/gasTourProvider";
+import { GasDecorationManager } from "./core/gasAnalyzer/gasDecorationManager";
+import { BlockGasAnalyzer } from "./core/gasAnalyzer/blockGasAnalyzer";
 
 // Global reference to the state processor service
 let stateProcessorService: StateProcessorService | undefined
@@ -28,7 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
   stateProcessorService = services.stateProcessorService
   gasAnalyzerService = services.gasAnalyzerService
 
-  // Register commands
+  // Register panel commands (services register their own internal commands)
   context.subscriptions.push(
     vscode.commands.registerCommand("solidityDebugger.showStateVisualizer", () => {
       StateVisualizerPanel.createOrShow(context.extensionUri, stateProcessorService)
@@ -783,6 +784,11 @@ export class GasAnalyzerService implements vscode.Disposable {
 
       this.gasAnalysisEmitter.fire(results)
 
+      // Send results to the State Visualizer Webview if open
+      if (StateVisualizerPanel.currentPanel) {
+          StateVisualizerPanel.currentPanel.sendGasUsageToWebview(results);
+      }
+
       vscode.window.showInformationMessage(`Analyzed contract ${contractData.contractName}`)
     } catch (error) {
       const message = `Error analyzing gas: ${error instanceof Error ? error.message : String(error)}`
@@ -876,18 +882,25 @@ export class GasAnalyzerService implements vscode.Disposable {
           contractCode
         )
 
-        console.log("[Gas Tour] Found", hotspots.length, "gas hotspots")
+        console.log("[Gas Tour] Found", hotspots.length, "raw gas hotspots")
 
         if (hotspots.length === 0) {
           vscode.window.showInformationMessage("No gas optimization opportunities found.")
           return
         }
 
+        // Use BlockGasAnalyzer to enhance hotspots with block-level info
+        const blockAnalyzer = new BlockGasAnalyzer();
+        const blocks = blockAnalyzer.analyzeBlocks(hotspots, contractCode, editor.document);
+        const enhancedHotspots = blockAnalyzer.blocksToHotspots(blocks);
+
+        console.log("[Gas Tour] Generated", enhancedHotspots.length, "enhanced hotspots from", blocks.length, "blocks")
+
         // Apply decorations
-        this.gasDecorationManager.applyTourDecorations(editor, hotspots)
+        this.gasDecorationManager.applyTourDecorations(editor, enhancedHotspots)
 
         // Start tour
-        this.gasTourProvider.startTour(hotspots, editor)
+        this.gasTourProvider.startTour(enhancedHotspots, editor)
 
         // Listen for tour events
         this.disposables.push(

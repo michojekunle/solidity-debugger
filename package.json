@@ -1,15 +1,48 @@
 {
-  "name": "solidity-debugger",
+  "name": "soliditydebugger",
   "displayName": "Solidity Debugger with Visualized State Changes",
-  "description": "A VS Code extension for debugging Solidity smart contracts with visualized state changes",
+  "description": "A VS Code extension for debugging Solidity smart contracts with visualized state changes and gas optimization analysis",
   "version": "0.0.1",
+  "publisher": "devvmichael",
+  "author": {
+    "name": "Michael Ojekunle",
+    "email": "michojekunle1@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/michojekunle/solidity-debugger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/michojekunle/solidity-debugger/issues"
+  },
+  "homepage": "https://github.com/michojekunle/solidity-debugger#readme",
+  "icon": "media/icon.png",
+  "keywords": [
+    "solidity",
+    "debugger",
+    "blockchain",
+    "ethereum",
+    "smart contracts",
+    "gas optimization",
+    "state visualization",
+    "web3",
+    "debugging",
+    "ethereum development",
+    "evm",
+    "hardhat",
+    "foundry",
+    "visualizer",
+    "gas analysis"
+  ],
   "engines": {
     "vscode": "^1.96.0"
   },
   "main": "./out/extension.js",
   "categories": [
     "Debuggers",
-    "Visualization"
+    "Visualization",
+    "Programming Languages"
   ],
   "activationEvents": [
     "onLanguage:solidity",
@@ -144,7 +177,7 @@
     "install:all": "npm install && cd webview-ui && npm install",
     "start:webview": "cd webview-ui && npm run dev",
     "build:webview": "cd webview-ui && npm run build",
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run compile && npm run build:webview",
     "compile": "tsc -p ./",
     "watch": "tsc -w -p ./",
     "pretest": "npm run compile && npm run lint",
@@ -152,7 +185,11 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "test:watch": "vitest --watch"
+    "test:watch": "vitest --watch",
+    "package": "vsce package",
+    "publish": "vsce publish",
+    "clean": "rm -rf out && rm -rf webview-ui/dist && rm -rf *.vsix",
+    "rebuild": "npm run clean && npm run compile && npm run build:webview"
   },
   "dependencies": {
     "@eslint/js": "9.39.1",
@@ -198,6 +235,7 @@
     "@vscode/debugprotocol": "^1.68.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.7.1",
     "eslint": "^9.19.0",
     "glob": "^8.0.3",
     "jest": "^28.1.3",

@@ -56,3 +56,10 @@ export interface ContractInfo {
   storageLayout: StorageVariable[]
   bytecode?: string
 }
+
+export interface GasUsageData {
+  functionName: string;
+  gasUsed: number;
+  recommendation?: string;
+  isHotspot?: boolean;
+}

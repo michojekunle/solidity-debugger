@@ -123,83 +123,182 @@ export class GasAnalyzerPanel {
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Solidity Gas Analyzer</title>
           <style>
+            * { box-sizing: border-box; }
             body {
               padding: 0;
               margin: 0;
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-              color: #333;
-              background-color: #f8f8f8;
+              font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+              color: var(--vscode-foreground, #cccccc);
+              background-color: var(--vscode-editor-background, #1e1e1e);
+              font-size: 13px;
             }
             .container {
               padding: 20px;
+              max-width: 1200px;
+              margin: 0 auto;
+            }
+            .header {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              margin-bottom: 24px;
+              padding-bottom: 16px;
+              border-bottom: 1px solid var(--vscode-panel-border, #444);
             }
             .title {
-              font-size: 24px;
-              font-weight: bold;
-              margin-bottom: 20px;
+              font-size: 20px;
+              font-weight: 600;
+              display: flex;
+              align-items: center;
+              gap: 10px;
             }
-            .button {
-              background-color: #0078D7;
+            .title::before {
+              content: '⚡';
+              font-size: 24px;
+            }
+            .analyze-btn {
+              background: linear-gradient(135deg, #007ACC 0%, #0066B8 100%);
               color: white;
               padding: 10px 20px;
               border: none;
-              border-radius: 4px;
+              border-radius: 6px;
               cursor: pointer;
-              margin-bottom: 20px;
+              font-weight: 600;
+              font-size: 13px;
+              transition: all 0.2s ease;
             }
-            .button:hover {
-              background-color: #005A9E;
+            .analyze-btn:hover {
+              background: linear-gradient(135deg, #0088E8 0%, #007ACC 100%);
+              transform: translateY(-1px);
+              box-shadow: 0 4px 12px rgba(0, 122, 204, 0.4);
+            }
+            .stats-bar {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+              gap: 16px;
+              margin-bottom: 24px;
+            }
+            .stat-card {
+              background: var(--vscode-editor-inactiveSelectionBackground, #2d2d2d);
+              border: 1px solid var(--vscode-panel-border, #444);
+              border-radius: 8px;
+              padding: 16px;
+              text-align: center;
+            }
+            .stat-value {
+              font-size: 24px;
+              font-weight: 700;
+              color: var(--vscode-charts-blue, #4fc3f7);
+            }
+            .stat-label {
+              font-size: 11px;
+              text-transform: uppercase;
+              color: var(--vscode-descriptionForeground, #888);
+              margin-top: 4px;
             }
             .gas-container {
               display: flex;
               flex-direction: column;
-              gap: 20px;
+              gap: 16px;
             }
-            .function-gas {
-              background-color: white;
-              border: 1px solid #ddd;
-              border-radius: 4px;
-              padding: 15px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            .function-card {
+              background: var(--vscode-editor-inactiveSelectionBackground, #252526);
+              border: 1px solid var(--vscode-panel-border, #3c3c3c);
+              border-radius: 8px;
+              overflow: hidden;
+              transition: border-color 0.2s ease;
+            }
+            .function-card:hover {
+              border-color: var(--vscode-focusBorder, #007ACC);
+            }
+            .function-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 16px;
+              border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
             }
             .function-name {
-              font-weight: bold;
-              color: #0078D7;
-              margin-bottom: 5px;
+              font-weight: 600;
+              font-size: 14px;
+              color: var(--vscode-symbolIcon-functionForeground, #DCDCAA);
+              font-family: var(--vscode-editor-font-family, monospace);
             }
-            .gas-used {
+            .gas-badge {
               display: flex;
               align-items: center;
-              margin-bottom: 10px;
+              gap: 8px;
             }
+            .severity-badge {
+              padding: 4px 10px;
+              border-radius: 12px;
+              font-size: 11px;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            .severity-critical { background: #5c1a1a; color: #f48771; }
+            .severity-high { background: #5c3c1a; color: #f9a825; }
+            .severity-warning { background: #3c3c1a; color: #fff176; }
+            .severity-low { background: #1a3c2a; color: #81c784; }
             .gas-value {
-              font-weight: bold;
-              margin-left: 5px;
+              font-family: var(--vscode-editor-font-family, monospace);
+              font-weight: 600;
+              color: var(--vscode-charts-orange, #ff9800);
+            }
+            .function-body {
+              padding: 16px;
             }
             .recommendations {
-              background-color: #FFF8E1;
-              padding: 10px;
-              border-radius: 4px;
-              border-left: 4px solid #FFC107;
+              background: var(--vscode-textBlockQuote-background, #2d2d2d);
+              border-left: 3px solid var(--vscode-charts-yellow, #ffc107);
+              padding: 12px 16px;
+              border-radius: 0 6px 6px 0;
+              margin-top: 12px;
             }
             .recommendations-title {
-              font-weight: bold;
-              margin-bottom: 5px;
+              font-weight: 600;
+              margin-bottom: 8px;
+              font-size: 12px;
+              color: var(--vscode-charts-yellow, #ffc107);
             }
             .recommendation-item {
-              margin-left: 15px;
-              margin-bottom: 5px;
+              margin: 8px 0;
+              padding-left: 20px;
+              position: relative;
+              line-height: 1.5;
+            }
+            .recommendation-item::before {
+              content: '→';
+              position: absolute;
+              left: 0;
+              color: var(--vscode-charts-green, #4caf50);
+            }
+            .empty-state {
+              text-align: center;
+              padding: 60px 20px;
+              color: var(--vscode-descriptionForeground, #888);
+            }
+            .empty-state-icon {
+              font-size: 48px;
+              margin-bottom: 16px;
             }
           </style>
         </head>
         <body>
           <div class="container">
-            <div class="title">Solidity Gas Analyzer</div>
-            <button class="button" onclick="analyzeGas()">Analyze Current Contract</button>
+            <div class="header">
+              <div class="title">Gas Analyzer</div>
+              <button class="analyze-btn" onclick="analyzeGas()">🔍 Analyze Contract</button>
+            </div>
+            <div class="stats-bar" id="stats-bar">
+              <div class="stat-card"><div class="stat-value">-</div><div class="stat-label">Functions</div></div>
+              <div class="stat-card"><div class="stat-value">-</div><div class="stat-label">Total Gas</div></div>
+              <div class="stat-card"><div class="stat-value">-</div><div class="stat-label">Hotspots</div></div>
+            </div>
             <div id="gas-usage" class="gas-container">
-              <!-- Gas usage will be rendered here -->
-              <div class="function-gas">
-                <div class="function-name">Waiting for analysis...</div>
+              <div class="empty-state">
+                <div class="empty-state-icon">⚡</div>
+                <div>Click "Analyze Contract" to start gas analysis</div>
               </div>
             </div>
           </div>
@@ -207,80 +306,69 @@ export class GasAnalyzerPanel {
           <script nonce="${nonce}">
             const vscode = acquireVsCodeApi();
             
-            // Setup event listener to receive messages from the extension
             window.addEventListener('message', event => {
               const message = event.data;
-              
-              switch (message.command) {
-                case 'updateGasUsage':
-                  renderGasUsage(message.gasUsage);
-                  break;
+              if (message.command === 'updateGasUsage') {
+                renderGasUsage(message.gasUsage);
               }
             });
             
             function analyzeGas() {
-              vscode.postMessage({
-                command: 'analyzeGasUsage'
-              });
+              document.getElementById('gas-usage').innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><div>Analyzing...</div></div>';
+              vscode.postMessage({ command: 'analyzeGasUsage' });
             }
             
-            // Request initial gas usage data
-            vscode.postMessage({
-              command: 'getGasUsage'
-            });
+            vscode.postMessage({ command: 'getGasUsage' });
+            
+            function getSeverity(gas) {
+              if (gas >= 50000) return { class: 'critical', text: 'Critical' };
+              if (gas >= 20000) return { class: 'high', text: 'High' };
+              if (gas >= 5000) return { class: 'warning', text: 'Warning' };
+              return { class: 'low', text: 'Low' };
+            }
             
             function renderGasUsage(gasUsage) {
               const container = document.getElementById('gas-usage');
-              container.innerHTML = '';
+              const statsBar = document.getElementById('stats-bar');
               
-              if (gasUsage.length === 0) {
-                container.innerHTML = '<div class="function-gas">No gas usage data available.</div>';
+              if (!gasUsage || gasUsage.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><div>No gas data. Run analysis first.</div></div>';
                 return;
               }
               
-              gasUsage.forEach(item => {
-                const el = document.createElement('div');
-                el.className = 'function-gas';
+              const totalGas = gasUsage.reduce((sum, item) => sum + (item.gasUsed || 0), 0);
+              const hotspots = gasUsage.filter(item => (item.gasUsed || 0) >= 20000).length;
+              
+              statsBar.innerHTML = \`
+                <div class="stat-card"><div class="stat-value">\${gasUsage.length}</div><div class="stat-label">Functions</div></div>
+                <div class="stat-card"><div class="stat-value">\${totalGas.toLocaleString()}</div><div class="stat-label">Total Gas</div></div>
+                <div class="stat-card"><div class="stat-value">\${hotspots}</div><div class="stat-label">Hotspots</div></div>
+              \`;
+              
+              container.innerHTML = gasUsage.map(item => {
+                const severity = getSeverity(item.gasUsed || 0);
+                const recs = item.recommendations || (item.recommendation ? [item.recommendation] : []);
                 
-                const funcName = document.createElement('div');
-                funcName.className = 'function-name';
-                funcName.textContent = item.functionName;
-                el.appendChild(funcName);
-                
-                const gasUsed = document.createElement('div');
-                gasUsed.className = 'gas-used';
-                gasUsed.textContent = 'Gas Used: ';
-                
-                const gasValue = document.createElement('span');
-                gasValue.className = 'gas-value';
-                gasValue.textContent = item.gasUsed.toLocaleString();
-                gasUsed.appendChild(gasValue);
-                
-                el.appendChild(gasUsed);
-                
-                if (item.recommendations && item.recommendations.length > 0) {
-                  const recommendations = document.createElement('div');
-                  recommendations.className = 'recommendations';
-                  
-                  const recTitle = document.createElement('div');
-                  recTitle.className = 'recommendations-title';
-                  recTitle.textContent = 'Optimization Recommendations:';
-                  recommendations.appendChild(recTitle);
-                  
-                  const recList = document.createElement('ul');
-                  item.recommendations.forEach(rec => {
-                    const recItem = document.createElement('li');
-                    recItem.className = 'recommendation-item';
-                    recItem.textContent = rec;
-                    recList.appendChild(recItem);
-                  });
-                  recommendations.appendChild(recList);
-                  
-                  el.appendChild(recommendations);
-                }
-                
-                container.appendChild(el);
-              });
+                return \`
+                  <div class="function-card">
+                    <div class="function-header">
+                      <div class="function-name">\${item.functionName || 'Unknown'}</div>
+                      <div class="gas-badge">
+                        <span class="severity-badge severity-\${severity.class}">\${severity.text}</span>
+                        <span class="gas-value">\${(item.gasUsed || 0).toLocaleString()} gas</span>
+                      </div>
+                    </div>
+                    <div class="function-body">
+                      \${recs.length > 0 ? \`
+                        <div class="recommendations">
+                          <div class="recommendations-title">💡 Optimization Recommendations</div>
+                          \${recs.map(rec => \`<div class="recommendation-item">\${rec}</div>\`).join('')}
+                        </div>
+                      \` : '<div style="color: #888;">No specific recommendations</div>'}
+                    </div>
+                  </div>
+                \`;
+              }).join('');
             }
           </script>
         </body>

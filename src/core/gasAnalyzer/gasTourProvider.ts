@@ -15,7 +15,7 @@ export class GasTourProvider {
   public readonly onStepChanged = this.stepChangedEmitter.event;
 
   /**
-   * Start a new gas optimization tour
+   * Start a new gas optimization tour with block-based analysis
    */
   public startTour(hotspots: GasHotspot[], editor: vscode.TextEditor): void {
     if (hotspots.length === 0) {
@@ -23,18 +23,33 @@ export class GasTourProvider {
       return;
     }
 
-    // Sort by severity (critical first) then by gas usage
+    // Sort hierarchically: blocks first (function/loop), then lines
+    // This gives a top-down view: function → loops → specific lines
     this.hotspots = hotspots.sort((a, b) => {
+      // Prioritize block-level hotspots first
+      const aIsBlock = a.pattern?.includes('block') || false;
+      const bIsBlock = b.pattern?.includes('block') || false;
+      
+      if (aIsBlock && !bIsBlock) { return -1; }
+      if (!aIsBlock && bIsBlock) { return 1; }
+      
+      // Within same type, sort by severity then gas
       const severityOrder = { critical: 0, high: 1, warning: 2, optimal: 3 };
       const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
-      return severityDiff !== 0 ? severityDiff : b.gasUsed - a.gasUsed;
+      if (severityDiff !== 0) { return severityDiff; }
+      
+      return b.gasUsed - a.gasUsed;
     });
 
     this.currentIndex = 0;
     this.isActive = true;
 
+    const blockCount = this.hotspots.filter(h => h.pattern?.includes('block')).length;
+    const lineCount = this.hotspots.length - blockCount;
+
     vscode.window.showInformationMessage(
-      `Gas Optimization Tour: Found ${this.hotspots.length} optimization opportunities. Use the navigation buttons or commands to navigate.`
+      `Gas Optimization Tour: Found ${blockCount} code blocks and ${lineCount} hotspot lines. ` +
+      `Navigate to see block-level analysis and specific optimization opportunities.`
     );
 
     this.navigateToCurrentHotspot(editor);
