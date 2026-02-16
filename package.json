@@ -1,7 +1,7 @@
 {
-  "name": "soliditydebugger",
-  "displayName": "Solidity Debugger with Visualized State Changes",
-  "description": "A VS Code extension for debugging Solidity smart contracts with visualized state changes and gas optimization analysis",
+  "name": "soldbg",
+  "displayName": "Smart Contract Debugger with Visualized State Changes",
+  "description": "A VS Code extension for debugging Smart Contracts with visualized state changes and gas optimization analysis",
   "version": "0.0.1",
   "publisher": "devvmichael",
   "author": {
@@ -19,7 +19,7 @@
   "homepage": "https://github.com/michojekunle/solidity-debugger#readme",
   "icon": "media/icon.png",
   "keywords": [
-    "solidity",
+    "smart contracts",
     "debugger",
     "blockchain",
     "ethereum",
@@ -51,50 +51,50 @@
   "contributes": {
     "commands": [
       {
-        "command": "solidityDebugger.showStateVisualizer",
-        "title": "Solidity Debugger: Show State Visualizer"
+        "command": "soldbg.showStateVisualizer",
+        "title": "Smart Contract Debugger: Show State Visualizer"
       },
       {
-        "command": "solidityDebugger.showGasAnalyzer",
-        "title": "Solidity Debugger: Show Gas Analyzer"
+        "command": "soldbg.showGasAnalyzer",
+        "title": "Smart Contract Debugger: Show Gas Analyzer"
       },
       {
-        "command": "solidityDebugger.analyzeContractState",
-        "title": "Solidity Debugger: Analyze Contract State"
+        "command": "soldbg.analyzeContractState",
+        "title": "Smart Contract Debugger: Analyze Contract State"
       },
       {
-        "command": "solidityDebugger.analyzeGasUsage",
-        "title": "Solidity Debugger: Analyze Gas Usage"
+        "command": "soldbg.analyzeGasUsage",
+        "title": "Smart Contract Debugger: Analyze Gas Usage"
       },
       {
-        "command": "solidityDebugger.stateVisualiser.nextStep",
-        "title": "Solidity Debugger: Next Step"
+        "command": "soldbg.stateVisualiser.nextStep",
+        "title": "Smart Contract Debugger: Next Step"
       },
       {
-        "command": "solidityDebugger.stateVisualiser.resetState",
+        "command": "soldbg.stateVisualiser.resetState",
         "title": "State Visualiser: Reset State"
       },
       {
-        "command": "solidityDebugger.startGasTour",
-        "title": "Solidity Debugger: Start Gas Optimization Tour"
+        "command": "soldbg.startGasTour",
+        "title": "Smart Contract Debugger: Start Gas Optimization Tour"
       },
       {
-        "command": "solidityDebugger.nextGasHotspot",
+        "command": "soldbg.nextGasHotspot",
         "title": "Gas Tour: Next Hotspot"
       },
       {
-        "command": "solidityDebugger.previousGasHotspot",
+        "command": "soldbg.previousGasHotspot",
         "title": "Gas Tour: Previous Hotspot"
       },
       {
-        "command": "solidityDebugger.finishGasTour",
+        "command": "soldbg.finishGasTour",
         "title": "Gas Tour: Finish Tour"
       }
     ],
     "debuggers": [
       {
-        "type": "solidityDebug",
-        "label": "Solidity Debug",
+        "type": "soldbg",
+        "label": "Smart Contract Debug",
         "program": "./out/debugAdapter.js",
         "runtime": "node",
         "configurationAttributes": {
@@ -105,7 +105,7 @@
             "properties": {
               "program": {
                 "type": "string",
-                "description": "Path to the Solidity file to debug"
+                "description": "Path to the Smart Contract file to debug"
               },
               "args": {
                 "type": "array",
@@ -124,9 +124,9 @@
         },
         "initialConfigurations": [
           {
-            "type": "solidityDebug",
+            "type": "soldbg",
             "request": "launch",
-            "name": "Debug Solidity Contract",
+            "name": "Debug Smart Contract",
             "program": "${file}",
             "stopOnEntry": true
           }
@@ -137,37 +137,37 @@
       "editor/context": [
         {
           "when": "resourceLangId == solidity",
-          "command": "solidityDebugger.showStateVisualizer",
+          "command": "soldbg.showStateVisualizer",
           "group": "navigation"
         },
         {
           "when": "resourceLangId == solidity",
-          "command": "solidityDebugger.showGasAnalyzer",
+          "command": "soldbg.showGasAnalyzer",
           "group": "navigation"
         },
         {
           "when": "resourceLangId == solidity",
-          "command": "solidityDebugger.analyzeContractState",
+          "command": "soldbg.analyzeContractState",
           "group": "navigation"
         },
         {
           "when": "resourceLangId == solidity",
-          "command": "solidityDebugger.analyzeGasUsage",
+          "command": "soldbg.analyzeGasUsage",
           "group": "navigation"
         },
         {
           "when": "resourceLangId == solidity",
-          "command": "solidityDebugger.startGasTour",
+          "command": "soldbg.startGasTour",
           "group": "navigation"
         }
       ],
       "webview/context": [
         {
-          "command": "solidityDebugger.stateVisualiser.nextStep",
+          "command": "soldbg.stateVisualiser.nextStep",
           "when": "webviewId == 'stateVisualizer'"
         },
         {
-          "command": "solidityDebugger.stateVisualiser.resetState",
+          "command": "soldbg.stateVisualiser.resetState",
           "when": "webviewId == 'stateVisualizer'"
         }
       ]

@@ -1,12 +1,10 @@
-# Solidity Debugger with Visualized State Changes
+# Smart Contract Debugger with Visualized State Changes
 
 <div align="center">
 
 ![Version](https://img.shields.io/badge/version-0.0.1-blue.svg)
 ![VS Code Version](https://img.shields.io/badge/VS%20Code-%5E1.96.0-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-
-
 
 [Features](#features) • [Installation](#installation) • [Getting Started](#getting-started) • [Usage](#usage) • [Development](#development) • [Contributing](#contributing)
 
@@ -17,24 +15,28 @@
 ## 🌟 Features
 
 ### 🔍 State Visualization
+
 - **Real-time State Tracking**: Visualize contract state changes during execution
 - **Interactive Step-Through**: Step through contract execution with live state updates
 - **Before/After Comparison**: See exactly how state variables change
 - **Transaction Trace Analysis**: Parse and display storage changes, memory operations, and call stack
 
 ### ⛽ Gas Analysis & Optimization
+
 - **Gas Usage Heatmaps**: Visual representation of gas consumption across your contract
 - **Optimization Suggestions**: Contextual recommendations for gas efficiency improvements
 - **Pattern Detection**: Identify common gas inefficiencies with 10+ optimization patterns
 - **Interactive Gas Tour**: Guided walkthrough of gas hotspots in your code
 
 ### 🎯 Developer Tools Integration
+
 - **Debug Adapter Protocol**: Full debugging support for Solidity contracts
 - **Context Menus**: Quick access to debugging tools from editor context
 - **Command Palette**: All features accessible via VS Code commands
 - **Webview Panels**: Beautiful, interactive UI for state and gas analysis
 
 ### 📚 Educational Features
+
 - **Error Pattern Database**: Solutions for common Solidity errors
 - **Contextual Help**: Get help exactly where you need it
 - **Interactive Examples**: Learn by doing with built-in examples
@@ -44,9 +46,10 @@
 ## 📦 Installation
 
 ### From VS Code Marketplace (Coming Soon)
+
 1. Open VS Code
 2. Go to Extensions (`Cmd+Shift+X` on macOS, `Ctrl+Shift+X` on Windows/Linux)
-3. Search for "Solidity Debugger with Visualized State Changes"
+3. Search for "Smart Contract Debugger with Visualized State Changes"
 4. Click **Install**
 
 <!-- ### From VSIX (Manual Installation)
@@ -61,6 +64,7 @@
 ## 🏁 Getting Started
 
 ### Prerequisites
+
 - **Node.js**: v20.0.0 or higher
 - **VS Code**: v1.96.0 or higher
 - **npm**: v10.0.0 or higher
@@ -68,13 +72,14 @@
 ### Quick Start
 
 1. **Open a Solidity File**
+
    ```solidity
    // example.sol
    pragma solidity ^0.8.0;
-   
+
    contract MyContract {
        uint256 public value;
-       
+
        function setValue(uint256 _value) public {
            value = _value;
        }
@@ -83,16 +88,16 @@
 
 2. **Activate the Extension**
    - Open a `.sol` file (extension activates automatically)
-   - Or press `Cmd+Shift+P` / `Ctrl+Shift+P` and type "Solidity Debugger"
+   - Or press `Cmd+Shift+P` / `Ctrl+Shift+P` and type "Smart Contract Debugger"
 
 3. **Analyze Contract State**
    - Right-click in your Solidity file
-   - Select `Solidity Debugger: Analyze Contract State`
+   - Select `Smart Contract Debugger: Analyze Contract State`
    - View state changes in the State Visualizer panel
 
 4. **Analyze Gas Usage**
    - Right-click in your Solidity file
-   - Select `Solidity Debugger: Analyze Gas Usage`
+   - Select `Smart Contract Debugger: Analyze Gas Usage`
    - View gas analysis in the Gas Analyzer panel
 
 ---
@@ -103,19 +108,20 @@
 
 Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and search for:
 
-| Command | Description |
-|---------|-------------|
-| `Solidity Debugger: Show State Visualizer` | Open the state visualization panel |
-| `Solidity Debugger: Show Gas Analyzer` | Open the gas analysis panel |
-| `Solidity Debugger: Analyze Contract State` | Analyze and display contract state changes |
-| `Solidity Debugger: Analyze Gas Usage` | Analyze gas consumption patterns |
-| `Solidity Debugger: Start Gas Optimization Tour` | Interactive tour of gas hotspots |
-| `State Visualiser: Next Step` | Step to next state change |
-| `State Visualiser: Reset State` | Reset state visualizer |
+| Command                                                | Description                                |
+| ------------------------------------------------------ | ------------------------------------------ |
+| `Smart Contract Debugger: Show State Visualizer`       | Open the state visualization panel         |
+| `Smart Contract Debugger: Show Gas Analyzer`           | Open the gas analysis panel                |
+| `Smart Contract Debugger: Analyze Contract State`      | Analyze and display contract state changes |
+| `Smart Contract Debugger: Analyze Gas Usage`           | Analyze gas consumption patterns           |
+| `Smart Contract Debugger: Start Gas Optimization Tour` | Interactive tour of gas hotspots           |
+| `State Visualiser: Next Step`                          | Step to next state change                  |
+| `State Visualiser: Reset State`                        | Reset state visualizer                     |
 
 ### Context Menu
 
 Right-click on any Solidity file to access:
+
 - Show State Visualizer
 - Show Gas Analyzer
 - Analyze Contract State
@@ -150,18 +156,22 @@ Then press `F5` to start debugging your Solidity contract.
 ### Local Setup
 
 1. **Clone the Repository**
+
    ```bash
    git clone https://github.com/michojekunle/solidity-debugger.git
    cd solidity-debugger
    ```
 
 2. **Install Dependencies**
+
    ```bash
    npm run install:all
    ```
+
    This installs dependencies for both the extension and the webview UI.
 
 3. **Compile the Extension**
+
    ```bash
    npm run compile
    ```
@@ -238,6 +248,7 @@ npm run test:watch
 ```
 
 **Coverage Goals:**
+
 - Lines: 70%
 - Functions: 70%
 - Branches: 65%
@@ -250,6 +261,7 @@ npm run test:watch
 ### Prerequisites
 
 1. **Install `vsce` (VS Code Extension Manager)**
+
    ```bash
    npm install -g @vscode/vsce
    ```
@@ -285,6 +297,7 @@ vsce publish
 ```
 
 Or publish a specific version:
+
 ```bash
 vsce publish minor  # 0.0.1 -> 0.1.0
 vsce publish major  # 0.0.1 -> 1.0.0
@@ -294,6 +307,7 @@ vsce publish patch  # 0.0.1 -> 0.0.2
 ### Pre-Publish Checklist
 
 Before publishing, ensure:
+
 - [ ] All tests pass (`npm test`)
 - [ ] Extension compiles without errors (`npm run compile`)
 - [ ] Webview UI builds successfully (`npm run build:webview`)
@@ -355,6 +369,7 @@ Contributions are welcome! Here's how you can help:
 See [milestones.md](./milestones.md) for the complete development roadmap.
 
 **Upcoming Features:**
+
 - [ ] Hardhat plugin integration
 - [ ] Foundry integration
 - [ ] Enhanced error pattern database
@@ -399,7 +414,7 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 <div align="center">
 
-**[⬆ Back to Top](#solidity-debugger-with-visualized-state-changes)**
+**[⬆ Back to Top](#smart-contract-debugger-with-visualized-state-changes)**
 
 Made with ❤️ for the Solidity developer community
 
