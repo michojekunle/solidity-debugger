@@ -886,3 +886,148 @@ vscode-panels {
   color: var(--color-text-muted);
   font-style: italic;
 }
+
+/* Tabs container with proper scrolling */
+.tabs-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  /* Important for flex scrolling */
+}
+
+.tabs-container vscode-panels {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.panel-view-content {
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  padding: var(--spacing-md);
+}
+
+/* Ensure panels can scroll */
+vscode-panels::part(panels) {
+  overflow: auto;
+}
+
+vscode-panel-view {
+  flex-direction: column;
+  overflow: auto;
+  height: 100%;
+}
+
+/* Fix VSCode component heights */
+vscode-panels {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Custom Tab Bar Styles */
+.custom-tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--vscode-panel-border, #444);
+  background: var(--vscode-editor-background);
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.custom-tab {
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--vscode-foreground, #ccc);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  font-family: var(--vscode-font-family);
+}
+
+.custom-tab:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+  color: var(--vscode-foreground);
+}
+
+.custom-tab.active {
+  border-bottom-color: var(--vscode-focusBorder, #007ACC);
+  color: var(--vscode-foreground);
+  background: var(--vscode-list-activeSelectionBackground, rgba(0, 122, 204, 0.1));
+}
+
+.tab-content {
+  flex: 1;
+  overflow: auto;
+  padding: var(--spacing-md, 16px);
+}
+
+/* Gas Analysis Styles */
+.gas-analysis-container {
+  padding: var(--spacing-md);
+}
+
+.gas-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.gas-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  transition: all var(--transition-fast);
+}
+
+.gas-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-color: var(--color-primary);
+}
+
+.gas-card h4 {
+  margin: 0 0 var(--spacing-sm) 0;
+  color: var(--color-primary-light);
+  font-size: 14px;
+}
+
+.gas-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gas-metric .label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.gas-metric .value {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--color-danger);
+}
+
+.recommendation {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}

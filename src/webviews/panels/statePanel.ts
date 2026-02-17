@@ -64,6 +64,13 @@ export class StateVisualizerPanel {
     this._panel.webview.onDidReceiveMessage(
       async (message) => {
         switch (message.command) {
+          case "ready":
+            // Webview is ready - send all current state
+            console.log("[StatePanel] Webview ready - sending initial state");
+            this.sendStateChangesToWebview();
+            this.sendContractInfoToWebview();
+            break;
+
           case "getStateChanges":
             // Get the current state changes and send them to the webview
             this.sendStateChangesToWebview();
@@ -149,7 +156,8 @@ export class StateVisualizerPanel {
         this._stateProcessorService.onContractAnalyzed((contractInfo) => {
           // When a contract is analyzed, send the info to the webview
           this.sendContractInfoToWebview(contractInfo);
-          // Also immediately update state changes
+          // State will be sent when webview sends 'ready' message
+          // or immediately if webview is already loaded
           this.sendStateChangesToWebview();
         }),
       );
@@ -296,6 +304,15 @@ export class StateVisualizerPanel {
     }
 
     return [];
+  }
+
+  public sendGasUsageToWebview(gasUsage: any[]) {
+      if (this._panel && this._panel.webview) {
+          this._panel.webview.postMessage({
+              command: "updateGasUsage",
+              gasUsage: gasUsage || []
+          });
+      }
   }
 
 

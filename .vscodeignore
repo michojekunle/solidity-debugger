@@ -1,11 +1,72 @@
+# VS Code specific
 .vscode/**
 .vscode-test/**
+.vscode-test.mjs
+
+# Source files (only include compiled output)
 src/**
-.gitignore
-.yarnrc
-vsc-extension-quickstart.md
-**/tsconfig.json
-**/eslint.config.mjs
+webview-ui/src/**
+webview-ui/node_modules/**
+webview-ui/public/**
+webview-ui/.eslintrc.cjs
+webview-ui/vite.config.ts
+webview-ui/vite.config.js
+webview-ui/tsconfig.json
+webview-ui/tsconfig.app.json
+webview-ui/tsconfig.node.json
+webview-ui/package-lock.json
+webview-ui/package.json
+webview-ui/eslint.config.js
+webview-ui/index.html
+webview-ui/.gitignore
+webview-ui/README.md
+app/**
+out/test/**
+
+# Build artifacts
 **/*.map
 **/*.ts
-**/.vscode-test.*
+!src/**/*.d.ts
+
+# Config files
+.gitignore
+.yarnrc
+.editorconfig
+tsconfig.json
+eslint.config.mjs
+vitest.config.js
+vitest.config.ts
+vitest.config.js.map
+
+# Documentation
+vsc-extension-quickstart.md
+milestones.md
+TEST_GUIDE.md
+PUBLISHING.md
+PRE_PUBLISH_CHECKLIST.md
+PUBLISH_QUICK_REF.md
+SETUP_SUMMARY.md
+CONTRIBUTING.md
+
+# Tests
+src/test/**
+**/*.test.ts
+**/*.spec.ts
+
+# Development
+node_modules/**
+.git/**
+.github/**
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.DS_Store
+*.vsix
+.temp
+*.tmp
+**/.temp
+**/*.tmp
+

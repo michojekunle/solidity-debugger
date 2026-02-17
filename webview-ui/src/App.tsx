@@ -5,9 +5,6 @@ import { useEffect, useState, useCallback } from "react";
 import { vscode } from "./vscode";
 import {
   VSCodeButton,
-  VSCodePanels,
-  VSCodePanelTab,
-  VSCodePanelView,
 } from "@vscode/webview-ui-toolkit/react";
 import ContractStateVisualizer from "./components/ContractStateVisualiser";
 import ContractSimulator from "./components/ContractSimulator";
@@ -20,6 +17,7 @@ import type {
   ContractFunction,
   ContractState,
   StorageVariable,
+  GasUsageData,
 } from "./types";
 
 const App: React.FC = () => {
@@ -40,6 +38,13 @@ const App: React.FC = () => {
   const [analyzing, setAnalyzing] = useState<boolean>(false);
   const [lastUpdate, setLastUpdate] = useState<number>(0);
   const [isAnalyzed, setIsAnalyzed] = useState<boolean>(false);
+  const [gasUsage, setGasUsage] = useState<GasUsageData[]>([]);
+
+  // Notify extension that webview is ready to receive messages
+  useEffect(() => {
+    console.log('[Webview] Mounted - sending ready signal');
+    vscode.postMessage({ command: "ready" });
+  }, []); // Empty dependency array = run once on mount
 
   useEffect(() => {
     window.addEventListener("message", handleMessage);
@@ -89,6 +94,13 @@ const App: React.FC = () => {
         setAnalyzing(false);
         setLastUpdate(Date.now());
         break;
+      
+      case "updateGasUsage":
+        setGasUsage(message.gasUsage || []);
+        if (activeTab !== "gas") {
+            // Optional: notify user or switch tab
+        }
+        break;
 
       case "error":
         setError({ code: message.code, message: message.message });
@@ -96,7 +108,7 @@ const App: React.FC = () => {
         setAnalyzing(false);
         break;
     }
-  }, []);
+  }, [activeTab]);
 
   const requestAnalysis = useCallback(() => {
     setLoading(true);
@@ -159,57 +171,96 @@ const App: React.FC = () => {
         )}
 
         {!loading && isAnalyzed && (
-          <VSCodePanels
-            activeid={activeTab}
-            onChange={(e: any) => setActiveTab(e.detail.tab)}
-          >
-            <VSCodePanelTab id="state">
-              <span>State Changes</span>
-              {stateChanges.length > 0 && (
-                <span className="tab-badge">{stateChanges.length}</span>
-              )}
-            </VSCodePanelTab>
-            <VSCodePanelTab id="simulator">
-              <span>Simulator</span>
-              {contractFunctions.length > 0 && (
-                <span className="tab-badge">{contractFunctions.length}</span>
-              )}
-            </VSCodePanelTab>
-            <VSCodePanelTab id="storage">
-              <span>Storage</span>
-              {storageVariables.length > 0 && (
-                <span className="tab-badge">{storageVariables.length}</span>
-              )}
-            </VSCodePanelTab>
+          <div className="tabs-container">
+            {/* Custom Tab Bar */}
+            <div className="custom-tab-bar">
+              <button 
+                className={`custom-tab ${activeTab === 'state' ? 'active' : ''}`}
+                onClick={() => setActiveTab('state')}
+              >
+                State Changes
+                {stateChanges.length > 0 && <span className="tab-badge">{stateChanges.length}</span>}
+              </button>
+              <button 
+                className={`custom-tab ${activeTab === 'simulator' ? 'active' : ''}`}
+                onClick={() => setActiveTab('simulator')}
+              >
+                Simulator
+                {contractFunctions.length > 0 && <span className="tab-badge">{contractFunctions.length}</span>}
+              </button>
+              <button 
+                className={`custom-tab ${activeTab === 'storage' ? 'active' : ''}`}
+                onClick={() => setActiveTab('storage')}
+              >
+                Storage
+                {storageVariables.length > 0 && <span className="tab-badge">{storageVariables.length}</span>}
+              </button>
+              <button 
+                className={`custom-tab ${activeTab === 'gas' ? 'active' : ''}`}
+                onClick={() => setActiveTab('gas')}
+              >
+                Gas Analysis
+                {gasUsage.length > 0 && <span className="tab-badge">{gasUsage.length}</span>}
+              </button>
+            </div>
 
-            <VSCodePanelView id="state">
-              <ContractStateVisualizer
-                stateChanges={stateChanges}
-                contractState={contractState}
-              />
-            </VSCodePanelView>
-
-            <VSCodePanelView id="simulator">
-              {contractFunctions.length > 0 ? (
-                <ContractSimulator
-                  contractFunctions={contractFunctions}
-                  currentState={contractState}
-                  onExecuting={setAnalyzing}
+            {/* Tab Content - Only render active tab */}
+            <div className="tab-content">
+              {activeTab === 'state' && (
+                <ContractStateVisualizer
+                  stateChanges={stateChanges}
+                  contractState={contractState}
                 />
-              ) : (
-                <div className="empty-state">
-                  <p>No contract functions available.</p>
-                  <VSCodeButton onClick={requestAnalysis}>
-                    Analyze Contract
-                  </VSCodeButton>
+              )}
+
+              {activeTab === 'simulator' && (
+                contractFunctions.length > 0 ? (
+                  <ContractSimulator
+                    contractFunctions={contractFunctions}
+                    currentState={contractState}
+                    onExecuting={setAnalyzing}
+                  />
+                ) : (
+                  <div className="empty-state">
+                    <p>No contract functions available.</p>
+                    <VSCodeButton onClick={requestAnalysis}>
+                      Analyze Contract
+                    </VSCodeButton>
+                  </div>
+                )
+              )}
+
+              {activeTab === 'storage' && (
+                <StorageLayout variables={storageVariables} />
+              )}
+
+              {activeTab === 'gas' && (
+                <div className="gas-analysis-container">
+                  {gasUsage.length > 0 ? (
+                    <div className="gas-cards">
+                      {gasUsage.map((item: GasUsageData, index: number) => (
+                        <div key={index} className="gas-card">
+                          <h4>{item.functionName || 'Hotspot ' + (index + 1)}</h4>
+                          <div className="gas-metric">
+                            <span className="label">Gas Used:</span>
+                            <span className="value">{item.gasUsed?.toLocaleString()}</span>
+                          </div>
+                          <p className="recommendation">{item.recommendation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <p>No gas analysis data available.</p>
+                      <VSCodeButton onClick={() => vscode.postMessage({ command: "analyzeGasUsage" })}>
+                        Analyze Gas Usage
+                      </VSCodeButton>
+                    </div>
+                  )}
                 </div>
               )}
-            </VSCodePanelView>
-
-            <VSCodePanelView id="storage">
-              <StorageLayout variables={storageVariables} />
-            </VSCodePanelView>
-          </VSCodePanels>
+            </div>
+          </div>
         )}
 
         {!loading && !isAnalyzed && !error && (
